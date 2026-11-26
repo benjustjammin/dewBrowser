@@ -98,10 +98,9 @@ persistent, fully separate store for cookies, local storage, IndexedDB and cache
 
 ## Search widget (iOS)
 
-A small Home Screen widget (Dew's drop, **Light / Dark / Auto** buttons and a **Search** capsule) and a Lock Screen one:
-tapping Search opens Dew in a new tab with the search box ready (`dew://search`); the buttons switch Dew's appearance
-without opening it (an App Intent saving to the App Group `group.com.automate.dew`, which Dew reads when it comes to the
-front, and which Settings → Appearance also updates). It follows the Home Screen's light, dark and tinted looks.
+A small Home Screen widget (Dew's drop and a **Search** capsule) and a Lock Screen one: tapping it opens Dew in a new
+tab with the search box ready (`dew://search`). Its look is a widget setting: touch and hold it → **Edit Widget →
+Appearance**: Automatic (follows the Home Screen, including tinted icons), Light or Dark.
 Settings → General → Search widget → **Opens in**: a particular space, or the current one. Target `Dew-iOS-Widget`
 (`iOSWidget/`, embedded in the iOS app). Debug: `-DewOpenAppURL dew://search` acts as if the widget was tapped.
 
@@ -322,8 +321,17 @@ playing audio/video or using the camera/microphone are skipped.
 
 ## Ideas / not done yet
 
-- Vertical sidebar tab mode, tab groups, split view
-- Chat: tab groups (Dew has none yet), actions on bookmarks
-- Find in page on macOS (iOS uses the system find bar), content blocking via `WKContentRuleList`
-- Per-space search engine, password autofill integration, Safari Web Extensions
-- Multiple windows on Mac; iCloud sync of spaces/tabs between Mac and iPhone
+- Vertical sidebar tab mode, and tab groups (Chat could then group tabs too)
+- Find in page on the Mac (iOS uses the system find bar)
+- Multiple browser windows on the Mac (there's one browser window, plus History and Settings)
+- A search engine per space (today one engine is used for every space)
+- AutoFill from iCloud Passwords and other password managers (Dew's own password manager already fills logins)
+- Safari Web Extensions
+- Chat actions on bookmarks (add, rename, organise)
+
+### Waiting on Apple
+
+- **iOS default browser and passkeys**: the `com.apple.developer.web-browser` entitlement (requested). Once granted,
+  add it to the iOS entitlements in `project.yml`; it also enables passkeys in web pages.
+- **Mac passkeys**: the `com.apple.developer.web-browser.public-key-credential` entitlement (macOS Browsers Passkeys
+  form; Apple grants it to organisation accounts).

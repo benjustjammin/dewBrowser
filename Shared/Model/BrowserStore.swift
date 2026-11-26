@@ -5,7 +5,6 @@ import Observation
 import AppKit
 #else
 import UIKit
-import WidgetKit
 #endif
 
 /// Light, dark, or following the system (Settings → Appearance).
@@ -162,14 +161,11 @@ final class BrowserStore {
         didSet {
             Self.appearanceDefaults.set(appearanceMode.rawValue, forKey: "appearanceMode")
             applyAppearance()
-            #if os(iOS)
-            WidgetCenter.shared.reloadAllTimelines()   // the widget highlights the current choice
-            #endif
         }
     }
 
-    /// Where the appearance choice is kept. On iOS it's the App Group shared with the Search widget, whose
-    /// Light / Dark / Auto buttons change it; on the Mac, the app's own settings.
+    /// Where the appearance choice is kept: on iOS the App Group shared with the Search widget (where earlier
+    /// builds' widget buttons saved it), on the Mac the app's own settings.
     static let appearanceDefaults: UserDefaults = {
         #if os(iOS)
         UserDefaults(suiteName: "group.com.automate.dew") ?? .standard
@@ -178,7 +174,7 @@ final class BrowserStore {
         #endif
     }()
 
-    /// iOS: picks up a choice made on the widget while Dew was in the background.
+    /// iOS: re-reads the saved choice when Dew comes to the front.
     func reloadAppearance() {
         let saved = AppearanceMode(rawValue: Self.appearanceDefaults.string(forKey: "appearanceMode") ?? "") ?? .system
         if saved != appearanceMode { appearanceMode = saved } else { applyAppearance() }

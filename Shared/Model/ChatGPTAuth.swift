@@ -16,7 +16,8 @@ import UIKit
 /// one-off server on 127.0.0.1 (OpenAI requires a loopback redirect).
 @MainActor @Observable
 final class ChatGPTAccount {
-    static let apiBase = URL(string: "https://api.openai.com/v1")!
+    /// A constant, so safe to read from any thread (the request builders aren't on the main actor).
+    nonisolated static let apiBase = URL(string: "https://api.openai.com/v1")!
     private static let authorizeURL = URL(string: "https://auth.openai.com/api/accounts/authorize")!
     private static let tokenURL = URL(string: "https://auth.openai.com/api/accounts/oauth/token")!
     private static let discoveryURL = URL(string: "https://auth.openai.com/.well-known/openid-configuration")!
@@ -381,15 +382,15 @@ private final class LoopbackServer: @unchecked Sendable {
         self.listener = listener
         listener.newConnectionHandler = { [weak self] connection in self?.handle(connection) }
         return try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
+            // The state handler can be called more than once; only the first ready/failed state may resume.
+            let once = Once()
             listener.stateUpdateHandler = { state in
-                guard !resumed else { return }
                 switch state {
                 case .ready:
-                    resumed = true
+                    guard once.claim() else { return }
                     continuation.resume(returning: listener.port?.rawValue ?? 0)
                 case .failed(let error):
-                    resumed = true
+                    guard once.claim() else { return }
                     listener.cancel()
                     continuation.resume(throwing: error)
                 default:
@@ -432,5 +433,20 @@ private final class LoopbackServer: @unchecked Sendable {
         let bytes = Data(body.utf8)
         let head = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(bytes.count)\r\nConnection: close\r\n\r\n"
         connection.send(content: Data(head.utf8) + bytes, completion: .contentProcessed { _ in connection.cancel() })
+    }
+}
+
+/// A thread-safe "only the first caller wins" flag, for callbacks that may fire more than once.
+private final class Once: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+
+    /// True for the first call only.
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if done { return false }
+        done = true
+        return true
     }
 }

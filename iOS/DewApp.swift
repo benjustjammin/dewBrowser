@@ -39,7 +39,7 @@ struct DewApp: App {
                 }
                 .onChange(of: scenePhase) {
                     if scenePhase == .active {
-                        store.reloadAppearance()   // the widget's Light / Dark / Auto buttons may have changed it
+                        store.reloadAppearance()
                         store.chat.refreshKeys()   // an API key may have arrived from the Mac through iCloud Keychain
                         Task { await store.runAutoClear(.periodic) }
                         Task { await store.cloudSync.refresh() }

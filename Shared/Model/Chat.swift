@@ -350,6 +350,7 @@ final class ChatSession {
 
     /// What's missing before Chat can answer, in a sentence.
     var setupProblem: String? {
+        if BrowserStore.isDemo { return nil }   // screenshots: show the sample conversation without a key
         switch provider {
         case .anthropic:
             return hasAnthropicKey ? nil : "Add your Anthropic API key to start."

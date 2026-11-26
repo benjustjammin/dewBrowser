@@ -94,7 +94,17 @@ struct MacBrowserView: View {
         // Private browsing: dark chrome, like Safari's private windows.
         .environment(\.colorScheme, store.isPrivate ? .dark : colorScheme)
         .background(TrafficLightAligner(centerY: stripItemCenterY))
-        .onAppear { MiddleClickHandler.install(store: store) }
+        .onAppear {
+            MiddleClickHandler.install(store: store)
+            // Demo (screenshots): a 1440 × 900 window, a size the Mac App Store accepts.
+            if BrowserStore.isDemo {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard let window = NSApp.windows.first(where: { $0.isVisible && $0.styleMask.contains(.titled) }) else { return }
+                    window.setContentSize(NSSize(width: 1440, height: 900))
+                    window.center()
+                }
+            }
+        }
     }
 }
 
@@ -249,6 +259,8 @@ private struct SpaceCapsule: View {
         }
         .padding(.trailing, pinned.isEmpty ? 0 : 3)
         .frame(height: stripItemHeight)
+        // Two-finger swipe sideways over the pill switches space (handled in MiddleClickHandler).
+        .onHover { store.isPointerOnSpacePill = $0 }
         .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(.primary.opacity(0.13), lineWidth: 1))
     }
@@ -380,11 +392,13 @@ private struct TabItem: View {
             }
             .frame(width: 16, height: 16)
             if !compact {
-                FadingText(text: tab.displayTitle, fade: showsClose ? 34 : 22)
+                FadingText(text: tab.displayTitle, fade: showsClose ? 14 : 22)
                     .foregroundStyle(Color.primary.opacity(selected ? 1 : 0.72))
             }
         }
-        .padding(.horizontal, compact ? 0 : 15)   // ~10 pt inside the hover highlight, like Dia
+        .padding(.leading, compact ? 0 : 15)   // ~10 pt inside the hover highlight, like Dia
+        // With the ✕ showing, the title stops (and fades) just before it instead of running underneath.
+        .padding(.trailing, compact ? 0 : showsClose ? Self.closeButtonRoom : 15)
         .frame(width: width, height: stripItemHeight, alignment: compact ? .center : .leading)
         .overlay(alignment: .trailing) {
             if showsClose {
@@ -418,7 +432,11 @@ private struct TabItem: View {
         .help(tab.displayTitle)
         .contextMenu { TabMenu(tab: tab) }
         .tabDragAndDrop(tab)
+        .animation(.easeOut(duration: 0.12), value: showsClose)
     }
+
+    /// The ✕ (18 pt) sits 11 pt from the tab's edge; the title ends 5 pt before it.
+    private static let closeButtonRoom: CGFloat = 11 + 18 + 5
 }
 
 /// A split in the tab strip: its tabs joined into one item with thin dividers between them.
@@ -489,13 +507,38 @@ private struct SplitSegment: View {
 
 /// Extra mouse buttons (SwiftUI has no gestures for them, so this watches mouse events):
 /// - middle-click closes the tab under the pointer, or opens a bookmark in a background tab;
-/// - side buttons (back/forward) switch space over the tab strip, like Dia, and go back/forward elsewhere.
+/// - side buttons (back/forward) switch space over the tab strip, like Dia, and go back/forward elsewhere;
+/// - a two-finger sideways swipe (or horizontal scroll) over the space pill switches space, once per swipe.
 @MainActor
 enum MiddleClickHandler {
     private static var monitor: Any?
+    private static var swipeMonitor: Any?
+    /// Sideways distance scrolled in the current swipe, and whether this swipe has already switched space.
+    private static var swipeDistance: CGFloat = 0
+    private static var swipeUsed = false
 
     static func install(store: BrowserStore) {
         guard monitor == nil else { return }
+        swipeMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak store] event in
+            guard let store, store.isPointerOnSpacePill else { return event }
+            // A new swipe starts: forget the last one. Momentum (the glide after lifting) never switches.
+            if event.phase == .began || (event.phase == [] && event.momentumPhase == [] && !event.hasPreciseScrollingDeltas) {
+                swipeDistance = 0
+                swipeUsed = false
+            }
+            guard event.momentumPhase == [], abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) else {
+                return event.momentumPhase == [] ? event : nil
+            }
+            swipeDistance += event.scrollingDeltaX
+            let threshold: CGFloat = event.hasPreciseScrollingDeltas ? 40 : 1   // trackpad vs mouse wheel ticks
+            if !swipeUsed && abs(swipeDistance) >= threshold {
+                swipeUsed = true
+                // Fingers moving left (content moving left) goes to the next space, like the iPhone's bar.
+                withAnimation(.snappy(duration: 0.2)) { store.selectAdjacentSpace(swipeDistance < 0 ? 1 : -1) }
+            }
+            if event.phase == .ended || event.phase == .cancelled { swipeDistance = 0; swipeUsed = false }
+            return nil
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .otherMouseUp) { [weak store] event in
             guard let store else { return event }
             if event.buttonNumber == 3 || event.buttonNumber == 4 {

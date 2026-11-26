@@ -73,6 +73,8 @@ final class BrowserStore {
     @ObservationIgnored var hoveredTabID: UUID?
     @ObservationIgnored var hoveredBookmarkID: UUID?
     @ObservationIgnored var isPointerInTabStrip = false
+    /// Mac: the pointer is over the space pill (a sideways swipe there switches space).
+    @ObservationIgnored var isPointerOnSpacePill = false
     static let historyLimit = 20_000
     let downloads = DownloadManager()
     let contentBlocker = ContentBlocker()
@@ -140,8 +142,13 @@ final class BrowserStore {
     @ObservationIgnored private var dataStores: [UUID: WKWebsiteDataStore] = [:]
     @ObservationIgnored private var saveTask: Task<Void, Never>?
 
+    /// Debug: `-DewDemo YES` starts with example spaces, tabs and bookmarks for screenshots. Nothing is loaded
+    /// from or saved to disk, websites get private (non-persistent) storage, and iCloud sync stays off, so
+    /// your real browsing is never shown or touched.
+    static let isDemo = UserDefaults.standard.bool(forKey: "DewDemo")
+
     init() {
-        load()
+        if Self.isDemo { loadDemo() } else { load() }
         if spaces.isEmpty {
             spaces = Space.makeDefault()
             selectedSpaceID = spaces[0].id
@@ -154,7 +161,7 @@ final class BrowserStore {
         cloudSync.snapshot = { [weak self] in self?.syncSnapshot() ?? [] }
         cloudSync.reconcileBookmarks = { [weak self] remote in self?.reconcileBookmarks(remote: remote) }
         cloudSync.commitBookmarkKeys = { [weak self] keys in self?.commitSyncedBookmarkKeys(keys) }
-        cloudSync.start()
+        if !Self.isDemo { cloudSync.start() }
         defaultBrowser.refresh()
         contentBlocker.onChange = { [weak self] reload in self?.applyContentBlocking(reload: reload) }
         startSuspensionTimer()
@@ -727,7 +734,7 @@ final class BrowserStore {
 
     func dataStore(for spaceID: UUID) -> WKWebsiteDataStore {
         if let store = dataStores[spaceID] { return store }
-        let store = isPrivate(spaceID) ? WKWebsiteDataStore.nonPersistent() : WKWebsiteDataStore(forIdentifier: spaceID)
+        let store = isPrivate(spaceID) || Self.isDemo ? WKWebsiteDataStore.nonPersistent() : WKWebsiteDataStore(forIdentifier: spaceID)
         dataStores[spaceID] = store
         return store
     }
@@ -1073,6 +1080,40 @@ final class BrowserStore {
         return directory.appending(path: "state.json")
     }
 
+    /// Example content for screenshots (see `isDemo`).
+    private func loadDemo() {
+        let personal = Space(name: "Personal", colorHex: "#D6336C", symbol: "person.fill")
+        let work = Space(name: "Work", colorHex: "#1C7ED6", symbol: "briefcase.fill")
+        spaces = [personal, work]
+        selectedSpaceID = personal.id
+        func open(_ address: String, _ title: String, in space: Space) -> BrowserTab {
+            let tab = BrowserTab(spaceID: space.id, url: URL(string: address), title: title, store: self)
+            tabs.append(tab)
+            return tab
+        }
+        let dew = open("https://en.wikipedia.org/wiki/Dew", "Dew - Wikipedia", in: personal)
+        _ = open("https://www.apple.com/", "Apple", in: personal)
+        _ = open("https://www.python.org/", "Welcome to Python.org", in: personal)
+        let repo = open("https://github.com/benjustjammin/dewBrowser", "dewBrowser", in: work)
+        _ = open("https://developer.apple.com/documentation/webkit", "WebKit | Apple Developer", in: work)
+        selectedTabIDs[personal.id] = dew.id
+        selectedTabIDs[work.id] = repo.id
+        // `-DewDemoTab 2` shows the space's third tab instead (Python.org: a coloured page, so the toolbar matches it).
+        let pick = UserDefaults.standard.integer(forKey: "DewDemoTab")
+        let personalTabs = tabs.filter { $0.spaceID == personal.id }
+        if personalTabs.indices.contains(pick) { selectedTabIDs[personal.id] = personalTabs[pick].id }
+        // `-DewDemoURL <address>` adds a tab and shows it (to pick a page with a strong colour for screenshots).
+        if let address = UserDefaults.standard.string(forKey: "DewDemoURL") {
+            selectedTabIDs[personal.id] = open(address, "", in: personal).id
+        }
+        let marks: [(String, String, Space)] = [
+            ("Wikipedia", "https://en.wikipedia.org/", personal), ("YouTube", "https://www.youtube.com/", personal),
+            ("Apple", "https://www.apple.com/", personal), ("Python", "https://www.python.org/", personal),
+            ("GitHub", "https://github.com/", work), ("Apple Developer", "https://developer.apple.com/", work),
+        ]
+        bookmarks = marks.map { Bookmark(spaceID: $0.2.id, title: $0.0, url: URL(string: $0.1)!, modified: .now) }
+    }
+
     private func load() {
         guard let data = try? Data(contentsOf: Self.stateURL),
               let state = try? JSONDecoder().decode(SavedState.self, from: data), !state.spaces.isEmpty else { return }
@@ -1102,6 +1143,7 @@ final class BrowserStore {
     }
 
     func setNeedsSave() {
+        guard !Self.isDemo else { return }
         cloudSync.setNeedsPush()
         saveTask?.cancel()
         saveTask = Task {
@@ -1112,6 +1154,7 @@ final class BrowserStore {
     }
 
     func saveNow() {
+        guard !Self.isDemo else { return }
         saveTask?.cancel()
         // Private browsing is never written to disk.
         let savedTabs = tabs.filter { !isPrivate($0.spaceID) }

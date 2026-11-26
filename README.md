@@ -6,6 +6,27 @@ cookies, logins, history and tabs.
 
 Release build of the Mac app: ~1.4 MB (vs. ~1.3 GB for Dia), no third-party dependencies.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/mac/1-chat.png" alt="Dew on the Mac: Chat beside a page, with the toolbar matching the site's colour" width="100%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/mac/2-browsing.png" alt="Dew on the Mac: browsing with Spaces, tabs and the bookmarks bar" width="100%">
+</p>
+<p align="center">
+  <img src="docs/screenshots/duo/1-browsing.png" alt="Dew on iPhone Duo: browsing, with the side buttons" width="32%">
+  &nbsp;
+  <img src="docs/screenshots/duo/2-chat.png" alt="Dew on iPhone Duo: Chat" width="32%">
+</p>
+
+Screenshots come from demo mode (`-DewDemo YES`): example spaces, tabs and bookmarks, private website storage, and
+no saving or iCloud sync, so real browsing never appears. `-DewDemoTab 2` shows the coloured Python.org tab,
+`-DewOpenChat YES -DewChatSample YES` opens Chat with a sample conversation (no API key or request needed). In demo
+mode the Mac window opens at 1440 × 900. Sizes in `docs/screenshots/` fit App Store Connect where it matters:
+`mac/` 2880 × 1800 (Mac App Store), `iphone/` 1320 × 2868 (iPhone 6.9″); `duo/` is the iPhone Duo's own size, for
+this README only.
+
 ## Build and run
 
 ```sh

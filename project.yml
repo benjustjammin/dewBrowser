@@ -11,7 +11,7 @@ settings:
     # The version people see (CFBundleShortVersionString) and the build number (CFBundleVersion), for both
     # apps. Raise CURRENT_PROJECT_VERSION before every App Store Connect upload.
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
     DEAD_CODE_STRIPPING: YES
   configs:
     Release:
@@ -21,6 +21,8 @@ targets:
   Dew-macOS:
     type: application
     platform: macOS
+    # A shared scheme, so Archive/Run work for everyone who clones the repo (Xcode's own are per-user).
+    scheme: {}
     sources: [Shared, macOS]
     info:
       path: macOS/Info.plist
@@ -71,6 +73,8 @@ targets:
   Dew-iOS:
     type: application
     platform: iOS
+    # A shared scheme, so Archive/Run work for everyone who clones the repo (Xcode's own are per-user).
+    scheme: {}
     sources: [Shared, iOS]
     info:
       path: iOS/Info.plist

@@ -11,7 +11,7 @@ settings:
     # The version people see (CFBundleShortVersionString) and the build number (CFBundleVersion), for both
     # apps. Raise CURRENT_PROJECT_VERSION before every App Store Connect upload.
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "2"
+    CURRENT_PROJECT_VERSION: "2.1"
     DEAD_CODE_STRIPPING: YES
   configs:
     Release:
@@ -96,8 +96,14 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: Web site URL
             CFBundleURLSchemes: [http, https]
+          # dew://search, opened by the Search widget.
+          - CFBundleURLName: Dew
+            CFBundleURLSchemes: [dew]
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+    dependencies:
+      # The Search widget, embedded in the app.
+      - target: Dew-iOS-Widget
     entitlements:
       path: iOS/Dew.entitlements
       properties:
@@ -107,6 +113,8 @@ targets:
         # Chat's API keys are shared between the Mac and iOS apps through iCloud Keychain.
         # Kept from the original com.local.dew ID, so saved API keys and the passwords key stay readable.
         keychain-access-groups: [$(AppIdentifierPrefix)com.local.dew]
+        # Shared with the Search widget (its Light / Dark / Auto buttons).
+        com.apple.security.application-groups: [group.com.automate.dew]
     settings:
       base:
         PRODUCT_NAME: Dew
@@ -115,3 +123,30 @@ targets:
         DEVELOPMENT_TEAM: UTJ8CD785K
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
+  Dew-iOS-Widget:
+    # Home screen and Lock Screen "Search" widget (opens dew://search).
+    type: app-extension
+    platform: iOS
+    sources:
+      - iOSWidget
+      - path: Shared/Views/DewMark.swift
+    info:
+      path: iOSWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Dew
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: iOSWidget/DewWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.automate.dew]
+    settings:
+      base:
+        PRODUCT_NAME: DewWidget
+        PRODUCT_BUNDLE_IDENTIFIER: com.automate.dew.widget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_TEAM: UTJ8CD785K
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: YES

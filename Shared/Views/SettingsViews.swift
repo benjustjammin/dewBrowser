@@ -27,6 +27,21 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("Search engine suggestions", isOn: $store.searchSuggestionsEnabled)
             }
+            #if os(iOS)
+            Section {
+                Picker("Opens in", selection: $store.widgetSpaceID) {
+                    Text("Current space").tag(UUID?.none)
+                    ForEach(store.spaces) { space in
+                        Label(space.name, systemImage: space.symbol).tag(UUID?.some(space.id))
+                    }
+                }
+            } header: {
+                Text("Search widget")
+            } footer: {
+                Text("The Search widget on your Home Screen or Lock Screen opens a new tab ready to search, in this space. Add it by touching and holding the Home Screen, then tapping Edit → Add Widget → Dew.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            #endif
             Section {
                 Picker("Suspend unused tabs", selection: $store.tabSuspension) {
                     ForEach(TabSuspension.allCases) { Text($0.title).tag($0) }
@@ -73,6 +88,20 @@ struct AppearanceSettingsView: View {
     var body: some View {
         @Bindable var store = store
         Form {
+            Section {
+                Picker("Appearance", selection: $store.appearanceMode) {
+                    ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                if store.appearanceMode != .light {
+                    Toggle("Darken pages", isOn: $store.darkenPages)
+                }
+            } footer: {
+                Text(store.appearanceMode == .light
+                     ? "System follows your device's light or dark setting. Private browsing is always dark."
+                     : "System follows your device's light or dark setting. When Dew is dark, Darken pages also shows websites that have no dark mode of their own in dark colours (photos and videos keep theirs).")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section {
                 Toggle("Match toolbar to website colour", isOn: $store.matchSiteColor)
             } footer: {

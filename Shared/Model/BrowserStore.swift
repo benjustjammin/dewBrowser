@@ -1,6 +1,25 @@
 import SwiftUI
 import WebKit
 import Observation
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+import WidgetKit
+#endif
+
+/// Light, dark, or following the system (Settings → Appearance).
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
 
 struct HistoryEntry: Codable, Identifiable {
     var id: String { "\(spaceID)|\(url.absoluteString)" }
@@ -117,6 +136,89 @@ final class BrowserStore {
     /// Dia-style clean bar: favicons only, names in tooltips.
     var bookmarksIconsOnly = UserDefaults.standard.object(forKey: "bookmarksIconsOnly") as? Bool ?? true {
         didSet { UserDefaults.standard.set(bookmarksIconsOnly, forKey: "bookmarksIconsOnly") }
+    }
+
+    /// iOS Search widget: the space it opens in (a space's ID), or nil for whichever space you're in.
+    var widgetSpaceID: UUID? = UserDefaults.standard.string(forKey: "widgetSpaceID").flatMap(UUID.init(uuidString:)) {
+        didSet { UserDefaults.standard.set(widgetSpaceID?.uuidString, forKey: "widgetSpaceID") }
+    }
+
+    /// `dew://search` (the Search widget): a new tab with the search box ready, in the widget's space.
+    func handleAppURL(_ url: URL) {
+        guard url.host() == "search" else { return }
+        if let id = widgetSpaceID, spaces.contains(where: { $0.id == id }) {
+            selectSpace(id)
+        } else if isPrivate {
+            exitPrivate()   // "current space" never means private browsing from a widget
+        }
+        isChatOpen = false
+        isManagingSpaces = false
+        showCommandBar(newTab: true)
+    }
+
+    /// Light or dark, or follow the system. Applies to the whole app, including web pages that have a dark version.
+    var appearanceMode = AppearanceMode(rawValue: BrowserStore.appearanceDefaults.string(forKey: "appearanceMode")
+                                        ?? UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {
+        didSet {
+            Self.appearanceDefaults.set(appearanceMode.rawValue, forKey: "appearanceMode")
+            applyAppearance()
+            #if os(iOS)
+            WidgetCenter.shared.reloadAllTimelines()   // the widget highlights the current choice
+            #endif
+        }
+    }
+
+    /// Where the appearance choice is kept. On iOS it's the App Group shared with the Search widget, whose
+    /// Light / Dark / Auto buttons change it; on the Mac, the app's own settings.
+    static let appearanceDefaults: UserDefaults = {
+        #if os(iOS)
+        UserDefaults(suiteName: "group.com.automate.dew") ?? .standard
+        #else
+        .standard
+        #endif
+    }()
+
+    /// iOS: picks up a choice made on the widget while Dew was in the background.
+    func reloadAppearance() {
+        let saved = AppearanceMode(rawValue: Self.appearanceDefaults.string(forKey: "appearanceMode") ?? "") ?? .system
+        if saved != appearanceMode { appearanceMode = saved } else { applyAppearance() }
+    }
+
+    /// When Dew is dark, show light pages (ones without their own dark mode) dark too. Updates open tabs in place.
+    var darkenPages = UserDefaults.standard.bool(forKey: "darkenPages") {
+        didSet {
+            UserDefaults.standard.set(darkenPages, forKey: "darkenPages")
+            reinstallUserScripts()   // pages loaded from now on
+            let enabled = darkenPages
+            for tab in tabs {
+                guard let webView = tab.loadedWebView else { continue }
+                Task {
+                    _ = try? await webView.callAsyncJavaScript("window.__dewDarkSet && window.__dewDarkSet(v)",
+                                                               arguments: ["v": enabled], contentWorld: .defaultClient)
+                }
+            }
+        }
+    }
+
+    /// Applies `appearanceMode` app-wide: the Mac's app appearance (every window, menu and web view), or on iOS
+    /// each window's interface style (so sheets follow too). Private browsing stays dark either way.
+    func applyAppearance() {
+        #if os(macOS)
+        NSApp.appearance = switch appearanceMode {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+        #else
+        let style: UIUserInterfaceStyle = switch appearanceMode {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows { window.overrideUserInterfaceStyle = style }
+        }
+        #endif
     }
 
     /// Colour the selected tab and toolbar to match the website, like Dia.
@@ -765,6 +867,9 @@ final class BrowserStore {
                                            forMainFrameOnly: true, in: .defaultClient))
         content.addUserScript(WKUserScript(source: PasswordAutofillHandler.script, injectionTime: .atDocumentEnd,
                                            forMainFrameOnly: true, in: .defaultClient))
+        // Darken pages: at document start, so it's ready before the page first paints.
+        content.addUserScript(WKUserScript(source: DarkPages.script(enabled: darkenPages), injectionTime: .atDocumentStart,
+                                           forMainFrameOnly: true, in: .defaultClient))
         #if os(macOS)
         // All frames, so links inside iframes get Dew's right-click actions too.
         content.addUserScript(WKUserScript(source: ContextLinkHandler.script, injectionTime: .atDocumentStart,
@@ -1213,11 +1318,26 @@ final class ThemeColorHandler: NSObject, WKScriptMessageHandler {
         const keys = [0.08, 0.5, 0.92].map(f => colorAt(w * f, 1).map(Math.round).join(','));
         const counts = {};
         keys.forEach(k => counts[k] = (counts[k] || 0) + 1);
-        const best = keys.slice().sort((a, b) => counts[b] - counts[a])[0];
+        let best = keys.slice().sort((a, b) => counts[b] - counts[a])[0];
+        // Darkened page (Darken pages): match the colour as it now appears, with its lightness flipped.
+        if (document.getElementById('__dew_dark_pages')) best = darkened(best.split(',').map(Number)).join(',');
         if (best !== last) {
           last = best;
           window.webkit.messageHandlers.\(name).postMessage(best.split(',').map(Number));
         }
+      };
+      // Same hue and saturation, lightness flipped: what invert + hue-rotate(180°) does to a colour.
+      const darkened = ([r, g, b]) => {
+        r /= 255; g /= 255; b /= 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+        let h = 0, s = 0;
+        if (d) {
+          s = d / (1 - Math.abs(2 * l - 1));
+          h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+        }
+        const L = 1 - l, C = (1 - Math.abs(2 * L - 1)) * s, X = C * (1 - Math.abs(h % 2 - 1)), m = L - C / 2;
+        const [r1, g1, b1] = h < 1 ? [C, X, 0] : h < 2 ? [X, C, 0] : h < 3 ? [0, C, X] : h < 4 ? [0, X, C] : h < 5 ? [X, 0, C] : [C, 0, X];
+        return [r1 + m, g1 + m, b1 + m].map(v => Math.round(Math.max(0, Math.min(1, v)) * 255));
       };
       let pending = false;
       const schedule = () => {
@@ -1225,6 +1345,7 @@ final class ThemeColorHandler: NSObject, WKScriptMessageHandler {
         pending = true;
         setTimeout(() => { pending = false; sample(); }, 120);
       };
+      window.__dewThemeResample = schedule;   // Darken pages calls this when it turns on or off
       sample();
       setTimeout(sample, 600);
       addEventListener('load', schedule);

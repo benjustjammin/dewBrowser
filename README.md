@@ -96,6 +96,15 @@ persistent, fully separate store for cookies, local storage, IndexedDB and cache
   line with `-allowProvisioningUpdates`. The CloudKit schema is in the Development environment; deploy it to
   Production in the CloudKit Console before TestFlight/App Store builds.
 
+## Search widget (iOS)
+
+A small Home Screen widget (Dew's drop, **Light / Dark / Auto** buttons and a **Search** capsule) and a Lock Screen one:
+tapping Search opens Dew in a new tab with the search box ready (`dew://search`); the buttons switch Dew's appearance
+without opening it (an App Intent saving to the App Group `group.com.automate.dew`, which Dew reads when it comes to the
+front, and which Settings → Appearance also updates). It follows the Home Screen's light, dark and tinted looks.
+Settings → General → Search widget → **Opens in**: a particular space, or the current one. Target `Dew-iOS-Widget`
+(`iOSWidget/`, embedded in the iOS app). Debug: `-DewOpenAppURL dew://search` acts as if the widget was tapped.
+
 ## iOS address editor
 
 Tapping the address bar (iOS) opens the address in place (above the keyboard when the bar is at the bottom) with a
@@ -256,6 +265,15 @@ native content blocker (rules compiled once and applied inside WebKit, so it's f
 A small built-in list works immediately; EasyList (ads) and EasyPrivacy (trackers) are downloaded, converted
 (`FilterListConverter` in `Shared/Model/ContentBlocker.swift`) and refreshed weekly (~115k rules). Scores 100/100
 on adblock-tester.com's contextual-advertising test (40 with blocking off).
+
+## Appearance and dark pages
+
+Settings → Appearance: **System** (follows the device), **Light** or **Dark**, applied app-wide (on the Mac every window,
+menu and web view; on iOS every screen and sheet). Private browsing is always dark. With Dew dark, **Darken pages**
+shows websites that have no dark mode of their own in dark colours: their colours are inverted and images, video and
+embedded frames flipped back, so photos look normal; pages that are already dark are left alone, and the matched
+toolbar colour follows. It works like dark-mode extensions, so a few dark logos on transparent backgrounds can
+disappear. `Shared/Model/DarkPages.swift`.
 
 ## Website colour
 

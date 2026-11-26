@@ -29,6 +29,14 @@
 				<string>https</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>Dew</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dew</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>

@@ -95,6 +95,7 @@ struct MacBrowserView: View {
         .environment(\.colorScheme, store.isPrivate ? .dark : colorScheme)
         .background(TrafficLightAligner(centerY: stripItemCenterY))
         .onAppear {
+            store.applyAppearance()
             MiddleClickHandler.install(store: store)
             // Demo (screenshots): a 1440 × 900 window, a size the Mac App Store accepts.
             if BrowserStore.isDemo {
@@ -1165,16 +1166,24 @@ private struct StartPage: View {
                         .padding(.horizontal, 24)
                         .padding(.bottom, 18)
                 }
-                CommandBarView(opensInNewTab: store.selectedTab == nil, showsRecentWhenEmpty: false)
-                    .id(store.selectedTab?.id ?? space.id)
+                // The search box keeps a fixed slot; its suggestions drop down over the bookmarks, like a menu,
+                // instead of pushing the page down and re-centring it as you type.
+                Color.clear
                     .frame(maxWidth: 600)
-                    // Grey in private browsing, like iOS.
-                    .background(store.isPrivate ? Color(white: 0.3) : Color(nsColor: .controlBackgroundColor),
-                                in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator))
-                    .shadow(color: .black.opacity(0.07), radius: 18, y: 6)
+                    .frame(height: 52)
+                    .overlay(alignment: .top) {
+                        CommandBarView(opensInNewTab: store.selectedTab == nil, showsRecentWhenEmpty: false)
+                            .id(store.selectedTab?.id ?? space.id)
+                            .fixedSize(horizontal: false, vertical: true)
+                            // Grey in private browsing, like iOS.
+                            .background(store.isPrivate ? Color(white: 0.3) : Color(nsColor: .controlBackgroundColor),
+                                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator))
+                            .shadow(color: .black.opacity(0.07), radius: 18, y: 6)
+                    }
                     .padding(.horizontal, 24)
                     .padding(.top, 4)
+                    .zIndex(1)
                 if !bookmarks.isEmpty {
                     // Wraps onto more rows when space is narrow (e.g. a split-view pane).
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 72, maximum: 84), spacing: 14)], spacing: 16) {

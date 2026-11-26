@@ -9,9 +9,17 @@ struct DewApp: App {
         WindowGroup {
             PhoneBrowserView()
                 .environment(store)
-                .onOpenURL { store.newTab(url: $0) }
+                .onOpenURL { url in
+                    // dew://search from the Search widget; anything else is a web link to open.
+                    if url.scheme == "dew" { store.handleAppURL(url) } else { store.newTab(url: url) }
+                }
                 .modifier(HandoffModifier(store: store))
                 .task {
+                    store.applyAppearance()
+                    // Debug: `-DewOpenAppURL dew://search` acts as if the Search widget was tapped.
+                    if let link = UserDefaults.standard.string(forKey: "DewOpenAppURL"), let url = URL(string: link) {
+                        store.handleAppURL(url)
+                    }
                     // Debug: `-DewOpenURL https://…` opens a page at launch (simulator testing).
                     // Debug: `-DewPrivate YES` starts in private browsing; `-DewEditAddress <text>` opens the
                     // address editor with that text (device testing).
@@ -31,6 +39,7 @@ struct DewApp: App {
                 }
                 .onChange(of: scenePhase) {
                     if scenePhase == .active {
+                        store.reloadAppearance()   // the widget's Light / Dark / Auto buttons may have changed it
                         store.chat.refreshKeys()   // an API key may have arrived from the Mac through iCloud Keychain
                         Task { await store.runAutoClear(.periodic) }
                         Task { await store.cloudSync.refresh() }

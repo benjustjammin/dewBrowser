@@ -70,7 +70,7 @@ private struct SplitPane<BlankPage: View>: View {
         VStack(spacing: 0) {
             header
             Group {
-                if store.isBlank(tab) {
+                if store.isBlank(tab) || tab.isInternalPage {
                     blankPage(tab)
                         .contentShape(Rectangle())
                         .simultaneousGesture(TapGesture().onEnded { focus() })

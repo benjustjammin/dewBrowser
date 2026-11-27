@@ -49,7 +49,11 @@ final class BrowserTab: NSObject, Identifiable {
         super.init()
     }
 
+    /// One of Dew's own pages (`dew://…`, like History), drawn natively rather than in a web view.
+    var isInternalPage: Bool { url?.scheme == "dew" }
+
     var displayTitle: String {
+        if url == BrowserStore.historyURL { return "History" }
         if !title.isEmpty { return title }
         return URLInput.displayHost(url) ?? "New Tab"
     }
@@ -62,8 +66,10 @@ final class BrowserTab: NSObject, Identifiable {
 
     var webView: WKWebView {
         if let loadedWebView { return loadedWebView }
-        let configuration = popupConfiguration ?? store?.makeConfiguration(for: spaceID) ?? WKWebViewConfiguration()
+        var configuration = popupConfiguration ?? store?.makeConfiguration(for: spaceID) ?? WKWebViewConfiguration()
         #if os(macOS)
+        // An extension's own page (its welcome or options page) needs the extension's configuration to load.
+        if popupConfiguration == nil, let url, let own = store?.extensions.configuration(for: url) { configuration = own }
         let webView = DewWebView(frame: .zero, configuration: configuration)   // adds Dew's link actions to the right-click menu
         webView.tab = self
         #else
@@ -85,8 +91,13 @@ final class BrowserTab: NSObject, Identifiable {
         if let suspendedState {
             webView.interactionState = suspendedState   // restores back/forward history and reloads the page
             self.suspendedState = nil
-        } else if popupConfiguration == nil, let url {
+        } else if popupConfiguration == nil, let url, !isInternalPage {
+            #if os(macOS)
+            // Pages restored at launch wait (briefly) for extensions, so their content scripts apply.
+            store?.extensions.whenReady { [weak webView] in webView?.load(URLRequest(url: url)) }
+            #else
             webView.load(URLRequest(url: url))
+            #endif
         }
         isSuspended = false
         popupConfiguration = nil
@@ -100,6 +111,7 @@ final class BrowserTab: NSObject, Identifiable {
                     guard let self, let title = webView.title else { return }
                     self.title = title
                     self.store?.setNeedsSave()
+                    self.extensionsChanged(.title)
                 }
             },
             webView.observe(\.url) { [weak self] webView, _ in
@@ -108,10 +120,14 @@ final class BrowserTab: NSObject, Identifiable {
                     if url.host != self.url?.host { self.faviconURL = nil }
                     self.url = url
                     self.store?.setNeedsSave()
+                    self.extensionsChanged(.URL)
                 }
             },
             webView.observe(\.isLoading) { [weak self] webView, _ in
-                MainActor.assumeIsolated { self?.isLoading = webView.isLoading }
+                MainActor.assumeIsolated {
+                    self?.isLoading = webView.isLoading
+                    self?.extensionsChanged(.loading)
+                }
             },
             webView.observe(\.estimatedProgress) { [weak self] webView, _ in
                 MainActor.assumeIsolated { self?.progress = webView.estimatedProgress }
@@ -124,6 +140,15 @@ final class BrowserTab: NSObject, Identifiable {
             },
         ]
     }
+
+    #if os(macOS)
+    private func extensionsChanged(_ properties: WKWebExtension.TabChangedProperties) {
+        store?.extensions.didChange(properties, of: self)
+    }
+    #else
+    private enum TabChange { case title, URL, loading }
+    private func extensionsChanged(_ change: TabChange) {}   // no extensions on iOS
+    #endif
 
     func load(_ url: URL) {
         self.url = url
@@ -202,7 +227,8 @@ final class BrowserTab: NSObject, Identifiable {
 // MARK: - Navigation
 
 extension BrowserTab: WKNavigationDelegate {
-    private static let inBrowserSchemes: Set<String> = ["http", "https", "about", "blob", "data", "file", "javascript"]
+    /// "webkit-extension": extensions' own pages (welcome, options).
+    private static let inBrowserSchemes: Set<String> = ["http", "https", "about", "blob", "data", "file", "javascript", "webkit-extension"]
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = navigationAction.request.url else { return .allow }
@@ -211,11 +237,25 @@ extension BrowserTab: WKNavigationDelegate {
             return .cancel
         }
         #if os(macOS)
+        // An extension's page sending you on to a website (a welcome page's "Sign in"): the page's web view belongs
+        // to the extension, so the site opens as a normal tab in its place, as Safari does.
+        if webView.url?.scheme == "webkit-extension", url.scheme == "http" || url.scheme == "https",
+           navigationAction.targetFrame?.isMainFrame != false, let store {
+            store.newTab(url: url, in: spaceID, after: self)
+            store.close(self, remember: false)
+            return .cancel
+        }
         if opensInNewTab(navigationAction) {
             openLinkInNewTab(url, navigationAction)
             return .cancel
         }
         #endif
+        // Link tracking stripped from the address before the page loads (with ad and tracker blocking on), as Safari does.
+        if store?.contentBlocker.isEnabled == true, navigationAction.targetFrame?.isMainFrame == true,
+           navigationAction.request.httpMethod == "GET", let clean = URLInput.withoutTracking(url) {
+            webView.load(URLRequest(url: clean))
+            return .cancel
+        }
         if navigationAction.shouldPerformDownload { return .download }
         return .allow
     }

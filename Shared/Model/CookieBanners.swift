@@ -19,6 +19,10 @@ enum CookieBannerMode: String, CaseIterable, Identifiable {
 /// iubenda, Google's consent page…) and falls back to a button with a matching label, in several
 /// languages, inside something that is clearly a cookie/consent banner. Runs in Dew's own script
 /// world in every frame (some banners live in iframes), and never clicks Accept in Reject mode.
+///
+/// Runs from the start of each page, so a known tool's banner is answered as it appears and kept
+/// invisible meanwhile (no flash). The hiding is lifted shortly after the click, or after a few
+/// seconds if the banner couldn't be answered, so a page is never left stuck behind one.
 enum CookieBanners {
     static func script(mode: CookieBannerMode) -> String? {
         guard mode != .off else { return nil }
@@ -49,6 +53,17 @@ enum CookieBanners {
             ['.cc-window .cc-deny', '.cc-window .cc-allow'],
             ['button[data-tid="banner-decline"]', 'button[data-tid="banner-accept"]'],
           ];
+
+          // Known tools' banners and backdrops, invisible until answered (they stay clickable).
+          const hide = document.createElement('style');
+          hide.textContent = `#onetrust-consent-sdk, #onetrust-banner-sdk, .onetrust-pc-dark-filter, #CybotCookiebotDialog,
+            #CybotCookiebotDialogBodyUnderlay, #didomi-host, .didomi-popup-backdrop, .qc-cmp2-container, #truste-consent-track,
+            .cmplz-cookiebanner, .cky-consent-container, .cky-overlay, .osano-cm-dialog, #iubenda-cs-banner, .fc-consent-root,
+            .cookiefirst-root, #hs-eu-cookie-confirmation, .cc-window, #usercentrics-root, #usercentrics-cmp-ui
+            { opacity: 0 !important; transition: none !important; }`;
+          document.documentElement.appendChild(hide);
+          const reveal = (after) => setTimeout(() => hide.remove(), after);
+          reveal(4000);
 
           const usercentrics = () => {
             const root = document.querySelector('#usercentrics-root, #usercentrics-cmp-ui')?.shadowRoot;
@@ -90,16 +105,18 @@ enum CookieBanners {
 
           let done = false, tries = 0, timer = null;
           const attempt = () => {
-            if (done || tries++ > 40) return;
+            timer = null;
+            if (done || tries++ > 80) return;
             for (const [reject, accept] of known) {
               const button = pick(MODE === 'reject' ? reject : accept);
               if (button) { button.click(); done = true; break; }
             }
             if (!done && usercentrics()) done = true;
             if (!done && generic()) done = true;
-            if (done) observer.disconnect();
+            if (done) { observer.disconnect(); reveal(1200); }   // after the tool has closed it
           };
-          const observer = new MutationObserver(() => { clearTimeout(timer); timer = setTimeout(attempt, 300); });
+          // Soon after the page changes (not after it settles, which on a busy page is late).
+          const observer = new MutationObserver(() => { timer ??= setTimeout(attempt, 50); });
           observer.observe(document.documentElement, { childList: true, subtree: true });
           attempt();
           setTimeout(attempt, 1200);

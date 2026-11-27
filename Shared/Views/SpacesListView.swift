@@ -128,18 +128,23 @@ struct SpaceStylePicker: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            HStack(spacing: gap) {
-                ForEach(Space.palette, id: \.self) { hex in
-                    Circle()
-                        .fill(Color(hex: hex).gradient)
-                        .frame(width: swatch, height: swatch)
-                        .overlay {
-                            if hex == colorHex {
-                                Circle().strokeBorder(.background, lineWidth: 2.5).padding(2.5)
+            // Colours, then the quiet greys and black.
+            ForEach([Space.colours, Space.neutrals], id: \.self) { row in
+                HStack(spacing: gap) {
+                    ForEach(row, id: \.self) { hex in
+                        Circle()
+                            .fill(Color(hex: hex).gradient)
+                            .overlay(Circle().strokeBorder(.primary.opacity(0.15)))
+                            .frame(width: swatch, height: swatch)
+                            .overlay {
+                                if hex == colorHex {
+                                    Circle().strokeBorder(.white, lineWidth: 2.5).padding(2.5)
+                                }
                             }
-                        }
-                        .contentShape(Circle())
-                        .onTapGesture { colorHex = hex }
+                            .contentShape(Circle())
+                            .onTapGesture { colorHex = hex }
+                            .accessibilityLabel(Space.colourName(hex))
+                    }
                 }
             }
             Divider()

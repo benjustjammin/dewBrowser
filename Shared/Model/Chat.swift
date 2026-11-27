@@ -210,7 +210,7 @@ extension BrowserTab {
 
     /// Reads the page's visible text, loading the tab first if it's suspended or hasn't been opened yet.
     func readPage() async -> PageSnapshot? {
-        guard url != nil else { return nil }
+        guard url != nil, !isInternalPage else { return nil }
         let webView = self.webView
         for _ in 0..<150 where webView.isLoading || webView.url == nil {   // up to 15 s
             try? await Task.sleep(for: .milliseconds(100))

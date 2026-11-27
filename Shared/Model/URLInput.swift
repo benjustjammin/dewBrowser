@@ -39,8 +39,22 @@ enum URLInput {
         return URL(string: String(format: searchTemplate, encoded))
     }
 
+    /// Link-tracking parameters (`utm_…`, `fbclid`, `gclid`…): they only tell ad platforms where you came from.
+    private static let trackingParameters: Set<String> = ["fbclid", "gclid", "dclid", "gbraid", "wbraid", "msclkid", "yclid",
+        "twclid", "ttclid", "igshid", "li_fat_id", "mc_cid", "mc_eid", "_hsenc", "_hsmi", "mkt_tok", "oly_anon_id", "oly_enc_id"]
+
+    /// `url` without link-tracking parameters, or nil if it has none.
+    static func withoutTracking(_ url: URL) -> URL? {
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false), let items = parts.queryItems else { return nil }
+        let kept = items.filter { !$0.name.lowercased().hasPrefix("utm_") && !trackingParameters.contains($0.name.lowercased()) }
+        guard kept.count < items.count else { return nil }
+        parts.queryItems = kept.isEmpty ? nil : kept
+        return parts.url
+    }
+
     static func displayHost(_ url: URL?) -> String? {
         guard let url else { return nil }
+        if url.scheme == "dew" { return "Dew" }   // Dew's own pages: "Dew / History"
         guard let host = url.host(percentEncoded: false), !host.isEmpty else { return url.absoluteString }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }

@@ -2,9 +2,10 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// "Search" widget: opens Dew in a new tab with the search box ready (`dew://search`). Which space it opens in is
-/// set in Dew (Settings → General → Search widget). Its own look is a widget setting: touch and hold the widget,
-/// Edit Widget → Appearance (Automatic follows the Home Screen; Light or Dark keeps it that way).
+/// "Search" widget, small or wide: opens Dew in a new tab with the search box ready (`dew://search`). Which space it
+/// opens in is set in Dew (Settings → General → Search widget); its drop matches the app icon chosen in Dew. Its own
+/// look is a widget setting: touch and hold the widget, Edit Widget → Appearance (Automatic follows the Home Screen;
+/// Light or Dark keeps it that way).
 @main
 struct DewWidgetBundle: WidgetBundle {
     var body: some Widget {
@@ -38,20 +39,26 @@ struct DewSearchWidget: Widget {
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "DewSearch", intent: SearchWidgetConfiguration.self, provider: Provider()) { entry in
-            DewSearchWidgetView(appearance: entry.appearance)
+            DewSearchWidgetView(appearance: entry.appearance, style: entry.style)
                 .widgetURL(Self.searchURL)
         }
         .configurationDisplayName("Search")
         .description("Jump straight to searching in Dew.")
-        .supportedFamilies([.systemSmall, .accessoryCircular])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
     }
 }
 
-/// One entry with the chosen look; it only changes when the widget is edited.
+/// One entry with the chosen look; it changes when the widget is edited or the app icon is (Dew reloads it then).
 struct Provider: AppIntentTimelineProvider {
     struct Entry: TimelineEntry {
         let date: Date
         let appearance: WidgetAppearance
+        var style = Provider.appIconStyle
+    }
+
+    /// The app icon chosen in Dew, shared through the App Group.
+    static var appIconStyle: DewMark.Style {
+        DewMark.Style(appIcon: UserDefaults(suiteName: "group.com.automate.dew")?.string(forKey: "appIcon") ?? "")
     }
 
     func placeholder(in context: Context) -> Entry { Entry(date: .now, appearance: .automatic) }
@@ -68,6 +75,7 @@ struct DewSearchWidgetView: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
     @Environment(\.colorScheme) private var systemScheme
     let appearance: WidgetAppearance
+    let style: DewMark.Style
 
     /// Light or Dark from Edit Widget, otherwise the Home Screen's.
     private var scheme: ColorScheme {
@@ -90,7 +98,7 @@ struct DewSearchWidgetView: View {
             .containerBackground(for: .widget) { Color.clear }
             .accessibilityLabel("Search in Dew")
         default:
-            let dark = scheme == .dark
+            let dark = scheme == .dark, wide = family == .systemMedium
             VStack(spacing: 0) {
                 HStack {
                     Spacer()
@@ -100,7 +108,7 @@ struct DewSearchWidgetView: View {
                 // The search capsule, like the address bar.
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
-                    Text("Search")
+                    Text(wide ? "Search or enter address" : "Search")
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -120,10 +128,10 @@ struct DewSearchWidgetView: View {
         }
     }
 
-    /// Dew's drop in full colour; a plain drop when the Home Screen is tinted or clear.
+    /// Dew's drop as on the app icon, in full colour; a plain drop when the Home Screen is tinted or clear.
     @ViewBuilder private var mark: some View {
         if renderingMode == .fullColor {
-            DewMark(size: 22).frame(height: 42, alignment: .top)
+            DewMark(size: 22, style: style).frame(height: 42, alignment: .top)
         } else {
             DropShape().fill(.primary).frame(width: 20, height: 26).widgetAccentable()
         }
@@ -134,5 +142,12 @@ struct DewSearchWidgetView: View {
     DewSearchWidget()
 } timeline: {
     Provider.Entry(date: .now, appearance: .light)
-    Provider.Entry(date: .now, appearance: .dark)
+    Provider.Entry(date: .now, appearance: .dark, style: .halo)
+}
+
+#Preview(as: .systemMedium) {
+    DewSearchWidget()
+} timeline: {
+    Provider.Entry(date: .now, appearance: .light, style: .bead)
+    Provider.Entry(date: .now, appearance: .dark, style: .halo)
 }

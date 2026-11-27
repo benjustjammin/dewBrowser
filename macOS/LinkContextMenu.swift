@@ -14,6 +14,7 @@ final class DewWebView: WKWebView {
 
     override func willOpenMenu(_ menu: NSMenu, with event: NSEvent) {
         super.willOpenMenu(menu, with: event)
+        addExtensionItems(to: menu)
         let identifiers = menu.items.compactMap { $0.identifier?.rawValue }
         let isLinkMenu = identifiers.contains(Self.openLinkInNewWindow) || identifiers.contains(Self.copyLink)
         // If the link isn't known (the script's report didn't arrive in time), leave WebKit's menu as it is.
@@ -44,6 +45,15 @@ final class DewWebView: WKWebView {
             index += 1
         }
         if index < menu.items.count, !menu.items[index].isSeparatorItem { menu.insertItem(.separator(), at: index) }
+    }
+
+    /// Extensions' own items (their contextMenus), at the end.
+    private func addExtensionItems(to menu: NSMenu) {
+        guard let tab, let manager = tab.store?.extensions, manager.canSee(tab) else { return }
+        let items = manager.contexts.values.flatMap { $0.menuItems(for: tab) }
+        guard !items.isEmpty else { return }
+        menu.addItem(.separator())
+        items.forEach(menu.addItem)
     }
 
     override func didCloseMenu(_ menu: NSMenu, with event: NSEvent?) {

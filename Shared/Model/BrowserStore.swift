@@ -5,6 +5,7 @@ import Observation
 import AppKit
 #else
 import UIKit
+import WidgetKit
 #endif
 
 /// The app icon (Settings → Appearance): the classic blue drop, or one of the alternatives.
@@ -25,14 +26,7 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
     /// Picker image (on the Mac, also the Dock icon).
     var previewName: String { "AppIconPreview-\(assetName)" }
     /// The matching drop for the new tab page and welcome screen.
-    var markStyle: DewMark.Style {
-        switch self {
-        case .classic: .classic
-        case .ink: .ink
-        case .bead: .bead
-        case .haloDark, .haloLight: .halo
-        }
-    }
+    var markStyle: DewMark.Style { DewMark.Style(appIcon: rawValue) }
 }
 
 /// Light, dark, or following the system (Settings → Appearance).
@@ -266,6 +260,11 @@ final class BrowserStore {
         #if os(macOS)
         NSApp.applicationIconImage = appIcon == .classic ? nil : NSImage(named: appIcon.previewName)
         #else
+        // The Search widget draws the same drop as the app icon.
+        if Self.appearanceDefaults.string(forKey: "appIcon") != appIcon.rawValue {
+            Self.appearanceDefaults.set(appIcon.rawValue, forKey: "appIcon")
+            WidgetCenter.shared.reloadAllTimelines()
+        }
         guard UIApplication.shared.supportsAlternateIcons, UIApplication.shared.alternateIconName != appIcon.iconName else { return }
         UIApplication.shared.setAlternateIconName(appIcon.iconName)
         #endif
@@ -353,6 +352,9 @@ final class BrowserStore {
         cloudSync.commitBookmarkKeys = { [weak self] keys in self?.commitSyncedBookmarkKeys(keys) }
         if !Self.isDemo { cloudSync.start() }
         defaultBrowser.refresh()
+        #if os(macOS)
+        _ = extensions   // starts loading installed extensions before any page does
+        #endif
         contentBlocker.onChange = { [weak self] reload in self?.applyContentBlocking(reload: reload) }
         startSuspensionTimer()
         Task {
@@ -460,6 +462,15 @@ final class BrowserStore {
         newTab(url: nil)
     }
 
+    /// Dew's own History page, shown in a tab (Mac).
+    static let historyURL = URL(string: "dew://history")!
+
+    /// ⌘Y: the History tab of the current space, opened if there isn't one.
+    func showHistory() {
+        if let tab = orderedTabs.first(where: { $0.url == Self.historyURL }) { select(tab); return }
+        newTab(url: Self.historyURL, after: selectedTab)
+    }
+
     func isBlank(_ tab: BrowserTab?) -> Bool {
         guard let tab else { return true }
         return tab.url == nil && tab.loadedWebView == nil
@@ -479,6 +490,9 @@ final class BrowserStore {
         } else {
             tabs.append(tab)
         }
+        #if os(macOS)
+        extensions.didOpen(tab)
+        #endif
     }
 
     // MARK: Tab suspension
@@ -516,8 +530,14 @@ final class BrowserStore {
         // The tabs being left count as active until now, so the idle clock starts from here.
         let leaving = visibleTabIDs
         for other in tabs where leaving.contains(other.id) { other.lastActive = Date() }
+        #if os(macOS)
+        let previous = selectedTab
+        #endif
         if selectedSpaceID != tab.spaceID { selectedSpaceID = tab.spaceID }
         selectedTabIDs[tab.spaceID] = tab.id
+        #if os(macOS)
+        if previous !== tab { extensions.didActivate(tab, previous: previous) }
+        #endif
         isEditingAddress = false
         setNeedsSave()
     }
@@ -548,6 +568,9 @@ final class BrowserStore {
             if closedTabs.count > 50 { closedTabs.removeFirst() }
         }
         tabs.remove(at: index)
+        #if os(macOS)
+        extensions.didClose(tab)
+        #endif
         tab.tearDown()
         // Last private tab closed: drop the in-memory store, so the next private tab starts clean.
         // Closing the last one also leaves private browsing, like closing a private window.
@@ -941,8 +964,16 @@ final class BrowserStore {
         return store
     }
 
+    #if os(macOS)
+    /// Chrome extensions (Mac).
+    @ObservationIgnored lazy var extensions = ExtensionManager(store: self)
+    #endif
+
     func makeConfiguration(for spaceID: UUID) -> WKWebViewConfiguration {
         let configuration = WKWebViewConfiguration()
+        #if os(macOS)
+        if !isPrivate(spaceID) { configuration.webExtensionController = extensions.controller }
+        #endif
         configuration.websiteDataStore = dataStore(for: spaceID)
         configuration.applicationNameForUserAgent = Self.safariUserAgentSuffix
         configuration.preferences.isElementFullscreenEnabled = true
@@ -976,8 +1007,8 @@ final class BrowserStore {
                                            forMainFrameOnly: false, in: .defaultClient))
         #endif
         if let cookies = CookieBanners.script(mode: cookieBannerMode) {
-            // All frames: some consent banners live in iframes.
-            content.addUserScript(WKUserScript(source: cookies, injectionTime: .atDocumentEnd,
+            // All frames: some consent banners live in iframes. From the start, so banners are answered as they appear.
+            content.addUserScript(WKUserScript(source: cookies, injectionTime: .atDocumentStart,
                                                forMainFrameOnly: false, in: .defaultClient))
         }
     }
@@ -1326,6 +1357,13 @@ final class BrowserStore {
             ("GitHub", "https://github.com/", work), ("Apple Developer", "https://developer.apple.com/", work),
         ]
         bookmarks = marks.map { Bookmark(spaceID: $0.2.id, title: $0.0, url: URL(string: $0.1)!, modified: .now) }
+        let visits: [(String, String, Double)] = [
+            ("Dew - Wikipedia", "https://en.wikipedia.org/wiki/Dew", 0.2), ("Apple", "https://www.apple.com/", 1.1),
+            ("Welcome to Python.org", "https://www.python.org/", 2.5), ("Hacker News", "https://news.ycombinator.com/", 26),
+            ("The Swift Programming Language", "https://docs.swift.org/swift-book/", 27.5), ("YouTube", "https://www.youtube.com/", 30),
+        ]
+        history = visits.map { HistoryEntry(spaceID: personal.id, url: URL(string: $0.1)!, title: $0.0,
+                                            lastVisited: .now.addingTimeInterval(-$0.2 * 3600), visitCount: 1) }
     }
 
     private func load() {

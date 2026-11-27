@@ -24,12 +24,17 @@ struct SpaceEditorView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Color").font(.subheadline).foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    ForEach(Space.palette, id: \.self) { hex in
-                        Circle().fill(Color(hex: hex).gradient)
-                            .frame(width: 26, height: 26)
-                            .overlay { if hex == space.colorHex { Circle().strokeBorder(.white, lineWidth: 2.5).padding(2) } }
-                            .onTapGesture { space.colorHex = hex }
+                // Colours, then the quiet greys and black.
+                ForEach([Space.colours, Space.neutrals], id: \.self) { row in
+                    HStack(spacing: 10) {
+                        ForEach(row, id: \.self) { hex in
+                            Circle().fill(Color(hex: hex).gradient)
+                                .overlay(Circle().strokeBorder(.primary.opacity(0.15)))
+                                .frame(width: 26, height: 26)
+                                .overlay { if hex == space.colorHex { Circle().strokeBorder(.white, lineWidth: 2.5).padding(2) } }
+                                .onTapGesture { space.colorHex = hex }
+                                .accessibilityLabel(Space.colourName(hex))
+                        }
                     }
                 }
             }

@@ -3,7 +3,19 @@ import SwiftUI
 /// Dew's mark: a drop and its soft reflection, in the style of the chosen app icon. `lift` raises the drop off
 /// the "water" and lowers its reflection by the same amount (a mirror), fading it as the gap grows.
 struct DewMark: View {
-    enum Style { case classic, ink, bead, halo }
+    enum Style {
+        case classic, ink, bead, halo
+
+        /// The drop for an app icon choice (`AppIconChoice`'s raw value), so the widget can match the app icon too.
+        init(appIcon: String) {
+            switch appIcon {
+            case "ink": self = .ink
+            case "bead": self = .bead
+            case "haloDark", "haloLight": self = .halo
+            default: self = .classic
+            }
+        }
+    }
 
     /// Width of the drop; everything else scales from it.
     var size: CGFloat = 44

@@ -23,12 +23,6 @@ struct DewMacApp: App {
         .defaultSize(width: 1280, height: 820)
         .commands { BrowserCommands(store: store) }
 
-        Window("History", id: "history") {
-            HistoryWindow().environment(store)
-        }
-        .defaultSize(width: 760, height: 560)
-        .keyboardShortcut("y")
-
         Settings {
             SettingsView().environment(store)
         }
@@ -53,6 +47,7 @@ struct SettingsView: View {
         Section(id: "passwords", title: "Passwords", symbol: "key"),
         Section(id: "privacy", title: "Privacy", symbol: "hand.raised"),
         Section(id: "ai", title: "AI Chat", symbol: "sparkles"),
+        Section(id: "extensions", title: "Extensions", symbol: "puzzlepiece.extension"),
         Section(id: "shortcuts", title: "Shortcuts", symbol: "keyboard"),
     ]
 
@@ -78,6 +73,7 @@ struct SettingsView: View {
                 case "passwords": PasswordsSettingsView()
                 case "privacy": PrivacySettingsView()
                 case "ai": AISettingsView()
+                case "extensions": ExtensionsSettingsView()
                 case "appearance": AppearanceSettingsView()
                 case "shortcuts": ShortcutsSettingsView()
                 default: GeneralSettingsView()
@@ -243,6 +239,8 @@ struct BrowserCommands: Commands {
         CommandMenu("History") {
             MenuItem("Back", systemImage: "chevron.backward") { store.selectedTab?.goBack() }.keyboardShortcut("[")
             MenuItem("Forward", systemImage: "chevron.forward") { store.selectedTab?.goForward() }.keyboardShortcut("]")
+            Divider()
+            MenuItem("Show All History", systemImage: "clock") { store.showHistory() }.keyboardShortcut("y")
             Divider()
             let closed = store.recentlyClosed
             Menu("Recently Closed", systemImage: "clock.arrow.circlepath") {

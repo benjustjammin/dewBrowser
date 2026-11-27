@@ -46,7 +46,11 @@ struct MacBrowserView: View {
                     }
                     ZStack {
                         if let selected = store.selectedSplit {
-                            SplitContentView(split: selected.split, tabs: selected.tabs) { _ in StartPage() }
+                            SplitContentView(split: selected.split, tabs: selected.tabs) { tab in
+                                if tab.isInternalPage { HistoryPage(tab: tab) } else { StartPage() }
+                            }
+                        } else if let tab = store.selectedTab, tab.isInternalPage {
+                            HistoryPage(tab: tab)
                         } else if let tab = store.selectedTab, !store.isBlank(tab) {
                             WebContainer(tab: tab)
                         } else {
@@ -286,7 +290,7 @@ private struct SpaceCapsule: View {
 
             ForEach(pinned) { tab in
                 let selected = store.isSelected(tab)
-                FaviconView(url: tab.faviconURL, size: 16)
+                FaviconView(url: tab.faviconURL, page: tab.url, size: 16)
                     .frame(width: 32, height: stripItemHeight - 6)
                     .background(selected ? store.siteColor?.color ?? cardColor : .clear,
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -487,7 +491,7 @@ private struct TabItem: View {
                 if tab.isLoading && tab.faviconURL == nil {
                     ProgressView().controlSize(.mini)
                 } else {
-                    FaviconView(url: tab.faviconURL, size: 16)
+                    FaviconView(url: tab.faviconURL, page: tab.url, size: 16)
                 }
             }
             .frame(width: 16, height: 16)
@@ -587,7 +591,7 @@ private struct SplitSegment: View {
     var body: some View {
         let selected = store.isSelected(tab)
         HStack(spacing: 7) {
-            FaviconView(url: tab.faviconURL, size: 15)
+            FaviconView(url: tab.faviconURL, page: tab.url, size: 15)
             if width >= 60 {
                 FadingText(text: tab.displayTitle, fade: 18)
                     .foregroundStyle(Color.primary.opacity(selected ? 1 : 0.62))
@@ -838,7 +842,7 @@ private struct TabDragAndDrop: ViewModifier {
     }
 }
 
-private struct StripButtonStyle: ButtonStyle {
+struct StripButtonStyle: ButtonStyle {
     @State private var isHovering = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -894,6 +898,10 @@ private struct NavigationBar: View {
                     .help("Saved passwords for \(host)")
                 }
             }
+            if let storeID = ExtensionManager.storeID(in: tab?.url) {
+                AddExtensionButton(storeID: storeID).padding(.trailing, 4)
+            }
+            ExtensionButtons()
             let blocker = store.contentBlocker
             Button { blocker.isEnabled.toggle() } label: {
                 Image(systemName: blocker.isEnabled ? "shield.lefthalf.filled" : "shield.slash")
@@ -902,7 +910,7 @@ private struct NavigationBar: View {
             }
             .buttonStyle(StripButtonStyle())
             .help(blocker.isEnabled ? "Ad blocking is on. Click to turn off." : "Ad blocking is off. Click to turn on.")
-            if let tab, tab.url != nil, !store.isPrivate(tab.spaceID) {
+            if let tab, tab.url != nil, !tab.isInternalPage, !store.isPrivate(tab.spaceID) {
                 let bookmarked = store.isBookmarked(tab)
                 Button { store.toggleBookmark(for: tab) } label: {
                     Image(systemName: bookmarked ? "star.fill" : "star")
@@ -976,10 +984,11 @@ private struct AddressField: View {
                     if tab.url?.scheme == "http" {
                         Image(systemName: "exclamationmark.triangle").font(.system(size: 10)).foregroundStyle(.orange).padding(.trailing, 5)
                     }
-                    Text(URLInput.displayHost(tab.url) ?? "")
+                    // An extension's own pages show its name, not their internal ID.
+                    Text(tab.url.flatMap(store.extensions.name(for:)) ?? URLInput.displayHost(tab.url) ?? "")
                         .foregroundStyle(.primary)
-                    if !tab.title.isEmpty {
-                        Text(" / " + tab.title).foregroundStyle(.tertiary)
+                    if !tab.title.isEmpty || tab.isInternalPage {
+                        Text(" / " + tab.displayTitle).foregroundStyle(.tertiary)
                     }
                 } else {
                     Text("New Tab").foregroundStyle(.secondary)

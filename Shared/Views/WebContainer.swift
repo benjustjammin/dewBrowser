@@ -128,6 +128,10 @@ struct FaviconView: View {
         Group {
             if let image {
                 Image(platformImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+            } else if (page ?? url)?.scheme == "dew" {
+                // Dew's own pages (History).
+                Image(systemName: "clock").resizable().aspectRatio(contentMode: .fit)
+                    .foregroundStyle(.secondary).padding(size * 0.06)
             } else {
                 Image(systemName: "globe").resizable().aspectRatio(contentMode: .fit)
                     .foregroundStyle(.secondary).padding(size * 0.08)

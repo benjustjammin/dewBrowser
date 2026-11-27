@@ -16,6 +16,7 @@ struct DewApp: App {
                 .modifier(HandoffModifier(store: store))
                 .task {
                     store.applyAppearance()
+                    store.applyAppIcon()   // tells the Search widget which drop to show
                     // Debug: `-DewOpenAppURL dew://search` acts as if the Search widget was tapped.
                     if let link = UserDefaults.standard.string(forKey: "DewOpenAppURL"), let url = URL(string: link) {
                         store.handleAppURL(url)

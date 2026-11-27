@@ -4,15 +4,18 @@ options:
   createIntermediateGroups: true
   deploymentTarget:
     iOS: "18.0"
-    macOS: "15.0"
+    # 15.4: WebKit's WebExtension support (Chrome extensions).
+    macOS: "15.4"
 settings:
   base:
     SWIFT_VERSION: "5.0"
     # The version people see (CFBundleShortVersionString) and the build number (CFBundleVersion), for both
     # apps. Raise CURRENT_PROJECT_VERSION before every App Store Connect upload.
-    MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "2.3"
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "2.6"
     DEAD_CODE_STRIPPING: YES
+    # Xcode's recommended setting (Swift accessors for asset catalog colours and images).
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
   configs:
     Release:
       SWIFT_OPTIMIZATION_LEVEL: "-Osize"

@@ -1,40 +1,115 @@
-# Dew
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/dew-halo-dark.png">
+    <img src="docs/images/dew-halo-light.png" alt="Dew's icon: a drop outlined in a rainbow" width="140">
+  </picture>
+</p>
 
-A small, fast macOS + iOS browser built directly on the system WebKit (WKWebView), with a Dia-style UI
-and **Spaces**: separate browsing identities (e.g. Personal and Work) in one window, each with its own
-cookies, logins, history and tabs.
+<h1 align="center">Dew</h1>
 
-Release build of the Mac app: ~1.4 MB (vs. ~1.3 GB for Dia), no third-party dependencies.
-
-## Screenshots
+<p align="center">A small, quick browser for Mac, iPhone and iPad.</p>
 
 <p align="center">
-  <img src="docs/screenshots/mac/1-chat.png" alt="Dew on the Mac: Chat beside a page, with the toolbar matching the site's colour" width="100%">
+  <img src="docs/screenshots/mac/1-browsing.png" alt="Dew on the Mac: a tab group, the toolbar taking the colour of python.org" width="100%">
+</p>
+
+I wanted a browser that felt like Dia but didn't take up over a gigabyte, so I made one. Dew is built on the same
+engine as Safari, which keeps it fast and easy on the battery, and the whole Mac app is under 6 MB. There's no
+account to make, nothing to install alongside it, and it doesn't phone home.
+
+## What it does
+
+**Spaces.** Keep Personal and Work (or whatever you like) apart in one window. Each space has its own logins,
+cookies, history and tabs, so being signed in to one Google account at work and another at home just works. ⌃1, ⌃2
+and so on switch between them, and you can give each a colour, from bright ones to plain greys and black.
+
+**Tabs your way.** Along the top like Dia, or down the side. Hide them until you need them for the full window.
+Group tabs, pin the ones you always have open, or put two pages side by side. Tabs you haven't looked at for a while
+can quietly free up memory and pick up where they left off.
+
+**Chat about what you're reading.** ⌘E opens a chat beside the page. Ask about the page you're on, or bring in a few
+tabs and compare them. It works with Claude, ChatGPT or a model running on your own Mac, using your own key or
+account. Nothing is sent until you ask.
+
+**Quieter browsing.** Ads and trackers are blocked before they load. Cookie banners are answered for you (Reject, unless
+you'd rather Accept) without flashing up first, and the tracking bits that get tacked onto links (`utm_`, `fbclid` and
+friends) are stripped before the page opens.
+
+**Your logins.** Dew saves and fills passwords, kept encrypted and separate for each space, and can import them from
+Dia, Chrome, Safari, 1Password or Bitwarden.
+
+**Across your devices.** Bookmarks and spaces sync through your own iCloud, you can open tabs from your other
+devices, and Handoff passes the page you're on between your Mac and iPhone.
+
+**Small touches.** The toolbar takes on the colour of the site you're on. Light, dark or follow the system, with
+an option to darken pages that don't have a dark mode of their own. Five app icons to choose from. History opens in
+a tab you can search. Bring everything over from Dia in one go.
+
+**Chrome extensions on the Mac.** Find one in the Chrome Web Store and click Add to Dew. Plenty work, Dark Reader among
+them. Some don't yet, 1Password included, because they lean on bits of Chrome that Safari's engine
+doesn't have.
+
+**On iPhone and iPad.** The address bar can sit at the top or the bottom, there's a Search widget in two sizes for
+the Home Screen, and passwords from Apple's Passwords app or 1Password fill as they do anywhere else on iOS.
+
+<p align="center">
+  <img src="docs/screenshots/mac/2-chat.png" alt="Dew on the Mac: Chat open beside python.org" width="100%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/mac/2-browsing.png" alt="Dew on the Mac: browsing with Spaces, tabs and the bookmarks bar" width="100%">
+  <img src="docs/screenshots/mac/3-sidebar-history.png" alt="Dew on the Mac in dark mode: tabs in the sidebar and History open in a tab" width="100%">
 </p>
 <p align="center">
-  <img src="docs/screenshots/duo/1-browsing.png" alt="Dew on iPhone Duo: browsing, with the side buttons" width="32%">
+  <img src="docs/screenshots/duo/1-browsing.png" alt="Dew on iPhone: browsing" width="32%">
   &nbsp;
-  <img src="docs/screenshots/duo/2-chat.png" alt="Dew on iPhone Duo: Chat" width="32%">
+  <img src="docs/screenshots/duo/2-chat.png" alt="Dew on iPhone: Chat" width="32%">
 </p>
 
-Screenshots come from demo mode (`-DewDemo YES`): example spaces, tabs and bookmarks, private website storage, and
-no saving or iCloud sync, so real browsing never appears. `-DewDemoTab 2` shows the coloured Python.org tab,
-`-DewOpenChat YES -DewChatSample YES` opens Chat with a sample conversation (no API key or request needed). In demo
-mode the Mac window opens at 1440 × 900. Sizes in `docs/screenshots/` fit App Store Connect where it matters:
-`mac/` 2880 × 1800 (Mac App Store), `iphone/` 1320 × 2868 (iPhone 6.9″); `duo/` is the iPhone Duo's own size, for
-this README only.
+## Small on purpose
 
-## Build and run
+| | Size |
+|---|---|
+| Mac app (Apple silicon and Intel) | 5.8 MB |
+| iPhone and iPad app | 3.1 MB (the App Store download is smaller) |
+| Dia, for comparison | about 1.3 GB |
+
+No third-party code and no bundled browser engine: it uses the one already on your Mac or iPhone.
+
+## Privacy
+
+Dew doesn't have accounts, analytics or crash reporting. Your browsing stays on your device, and anything that syncs
+goes through your own iCloud. Chat only sends what you ask, to the provider you picked. The details are in the
+[privacy policy](https://benjustjammin.github.io/dewBrowser/privacy.html).
+
+## Getting it
+
+Dew needs macOS 15.4 or later, or iOS 18 or later. It isn't on the App Store yet, so for now you build it yourself:
 
 ```sh
-xcodegen generate        # after adding/removing files
+brew install xcodegen
+xcodegen generate
 open Dew.xcodeproj       # schemes: Dew-macOS, Dew-iOS
 ```
 
-Both targets use Xcode-managed signing (team UTJ8CD785K, needed for iCloud); from the command line add `-allowProvisioningUpdates`. For iOS on a device pick your Team under Signing & Capabilities.
+Both targets use Xcode-managed signing (team UTJ8CD785K, needed for iCloud); pick your own team under Signing &
+Capabilities, and from the command line add `-allowProvisioningUpdates`. Run `xcodegen generate` again after adding
+or removing files.
+
+---
+
+# How it works
+
+The rest of this file is notes on how Dew is put together, mostly so I can find things again.
+
+## Screenshots and demo mode
+
+Screenshots come from demo mode (`-DewDemo YES`): example spaces, tabs, bookmarks and history, private website storage,
+and no saving or iCloud sync, so real browsing never appears. `-DewDemoTab 2` shows the coloured Python.org tab,
+`-DewDemoGroups YES` adds a tab group, `-DewDemoURL <address>` opens a page (`dew://history` for History),
+`-DewOpenChat YES -DewChatSample YES` opens Chat with a sample conversation (no API key or request needed), and setting
+keys work as arguments too (`-tabsInSidebar YES`, `-appearanceMode dark`). In demo mode the Mac window opens at
+1440 × 900. Sizes in `docs/screenshots/` fit App Store Connect where it matters: `mac/` 2880 × 1800 (Mac App Store),
+`iphone/` 1320 × 2868 (iPhone 6.9″); `duo/` is the iPhone Duo's own size, for this README only. The icon at the top is
+`docs/images/dew-halo-*.png`, rendered from `Tools/AppIcon-Halo*.svg`.
 
 ## Settings
 
@@ -104,8 +179,10 @@ persistent, fully separate store for cookies, local storage, IndexedDB and cache
 
 ## Search widget (iOS)
 
-A small Home Screen widget (Dew's drop and a **Search** capsule) and a Lock Screen one: tapping it opens Dew in a new
-tab with the search box ready (`dew://search`). Its look is a widget setting: touch and hold it → **Edit Widget →
+Home Screen widgets in two sizes (small: Dew's drop and a **Search** capsule; wide: the drop and a full-width
+"Search or enter address" bar) and a Lock Screen one: tapping it opens Dew in a new tab with the search box ready
+(`dew://search`). The drop matches the app icon chosen in Dew: the app writes its choice to the App Group
+(`appIcon`) at launch and when it changes, and reloads the widget. Its look is a widget setting: touch and hold it → **Edit Widget →
 Appearance**: Automatic (follows the Home Screen, including tinted icons), Light or Dark.
 Settings → General → Search widget → **Opens in**: a particular space, or the current one. Target `Dew-iOS-Widget`
 (`iOSWidget/`, embedded in the iOS app). Debug: `-DewOpenAppURL dew://search` acts as if the widget was tapped.
@@ -203,6 +280,23 @@ dragging it out removes it. Groups keep their tabs together, are saved with the 
 make them (`group_tabs`). **Middle-click on a link** (Settings → General): opens a new tab, or adds the tab to the
 current tab's group (starting one with both tabs if needed); ⌘-click always opens a plain new tab.
 `Shared/Model/TabGroups.swift`, `Shared/Views/TabGroupViews.swift`. Debug: `-DewDemoGroups YES` (with `-DewDemo`).
+
+## Chrome extensions (Mac)
+
+Through WebKit's own WebExtension support (`WKWebExtension`, macOS 15.4+), so it adds code but no libraries. Open an
+extension in the Chrome Web Store and click **Add to Dew** in the address bar: Dew downloads the package (a CRX,
+whose signed header it strips to get the ZIP WebKit loads), shows what the extension can access, and installs it.
+Settings → Extensions lists them (turn on or off, show in the toolbar, options, remove) and adds unpacked folders or
+ZIPs. Extension buttons sit in the address bar with their badges and popups; hidden ones are in a puzzle-piece menu.
+Extensions see Dew as one window holding every non-private tab, can open and manage tabs, add right-click menu items
+and use their keyboard shortcuts. They never run in private browsing. Pages restored at launch wait (at most a
+second) for extensions to load, so content scripts apply, as in Chrome. Extensions' own pages (welcome, options)
+open in tabs with the extension's name in the address bar. Packages live in `Application Support/Dew/Extensions`;
+demo runs (`-DewDemo`) use a temporary folder. `macOS/Extensions.swift`.
+
+Extensions that rely on Chrome APIs WebKit lacks (`notifications`, offscreen documents…) or on a Mac app (native
+messaging, which the App Store sandbox rules out) don't load; 1Password is one. Its app's Universal Autofill (⌘\\)
+works in Dew instead. Not yet: automatic extension updates (re-add from the store to update), and extensions on iOS.
 
 ## Mac shortcuts
 
@@ -307,7 +401,7 @@ The tab strip follows Dia: the space name (in its colour) and pinned tabs share 
 switch spaces, with each space's shortcut shown. Tabs have no chrome until hovered, titles fade out instead of
 "…", the selected tab is taller and flows into the page, and tabs condense toward icon-only as you open more.
 The ⌄ at the far right opens a Dia-style popover: search, open tabs, recently closed tabs and recent
-history, with **Show All History** (⌘Y) at the bottom: a full, searchable history window grouped by day, per space.
+history, with **Show All History** (⌘Y) at the bottom: History opens as a tab of its own (`dew://history`), searchable and grouped by day, for any space; clicking an entry opens it in that tab, ⌘-click in a background tab.
 
 Tabs can be dragged to reorder, including into and out of the pinned group. Right-click a tab for more.
 
@@ -355,7 +449,7 @@ playing audio/video or using the camera/microphone are skipped.
 - Multiple browser windows on the Mac (there's one browser window, plus History and Settings)
 - A search engine per space (today one engine is used for every space)
 - AutoFill from iCloud Passwords and other password managers (Dew's own password manager already fills logins)
-- Safari Web Extensions
+- Automatic updates for Chrome extensions, and extensions on iOS
 - Chat actions on bookmarks (add, rename, organise)
 
 ### Waiting on Apple

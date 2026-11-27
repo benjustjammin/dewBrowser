@@ -10,23 +10,38 @@ struct Space: Identifiable, Codable, Hashable {
     /// Optional so state saved before this existed still decodes.
     var privacy: PrivacySettings?
 
-    var color: Color { Color(hex: colorHex) }
+    /// The space's colour. The neutrals (greys and black) lift in Dark Mode, keeping their order, so the space's
+    /// name and accents stay readable on a dark window, as the system's own label colour does.
+    var color: Color {
+        let base = Color(hex: colorHex)
+        guard Space.neutrals.contains(colorHex) else { return base }
+        let lum = Color.luminance(colorHex), target = 0.6 + lum * 0.25
+        let light = base.mix(with: .white, by: max(0, (target - lum) / (1 - lum)))
+        #if os(macOS)
+        return Color(NSColor(name: nil) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(light) : NSColor(base) })
+        #else
+        return Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(light) : UIColor(base) })
+        #endif
+    }
 
     /// Light space colours (yellow, mint…) need dark text on them; most take white.
-    var prefersDarkText: Bool {
-        let hex = colorHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard hex.count >= 6, let value = UInt32(hex.prefix(6), radix: 16) else { return false }
-        let r = Double((value >> 16) & 0xFF), g = Double((value >> 8) & 0xFF), b = Double(value & 0xFF)
-        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.7
-    }
+    var prefersDarkText: Bool { Color.luminance(colorHex) > 0.7 }
 
     var privacySettings: PrivacySettings {
         get { privacy ?? PrivacySettings() }
         set { privacy = newValue }
     }
 
-    static let palette = ["#E8590C", "#D6336C", "#AE3EC9", "#7048E8", "#1C7ED6", "#0C8599", "#2F9E44", "#868E96"]
-    static let paletteNames = ["Orange", "Pink", "Purple", "Indigo", "Blue", "Teal", "Green", "Graphite"]
+    /// Orange, Pink, Purple, Indigo, Blue, Teal, Green.
+    static let colours = ["#E8590C", "#D6336C", "#AE3EC9", "#7048E8", "#1C7ED6", "#0C8599", "#2F9E44"]
+    /// The quiet ones: Stone, Graphite, Slate, Charcoal, Black.
+    static let neutrals = ["#8C8279", "#868E96", "#5F6B78", "#3A3F45", "#16181B"]
+    /// New spaces take the first unused, so colours come before neutrals.
+    static let palette = colours + neutrals
+    static let paletteNames = ["Orange", "Pink", "Purple", "Indigo", "Blue", "Teal", "Green",
+                               "Stone", "Graphite", "Slate", "Charcoal", "Black"]
+
+    static func colourName(_ hex: String) -> String { palette.firstIndex(of: hex).map { paletteNames[$0] } ?? "Colour" }
     static let symbols = ["person.fill", "briefcase.fill", "house.fill", "graduationcap.fill", "gamecontroller.fill",
                           "cart.fill", "heart.fill", "star.fill", "leaf.fill", "hammer.fill", "paintbrush.fill", "airplane"]
 
@@ -43,6 +58,14 @@ struct SpaceEditorState: Identifiable {
 }
 
 extension Color {
+    /// Perceived brightness of a "#RRGGBB" colour, 0–1.
+    static func luminance(_ hex: String) -> Double {
+        let digits = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard digits.count >= 6, let value = UInt32(digits.prefix(6), radix: 16) else { return 0.5 }
+        let r = Double((value >> 16) & 0xFF), g = Double((value >> 8) & 0xFF), b = Double(value & 0xFF)
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    }
+
     init(hex: String) {
         let value = UInt64(hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")), radix: 16) ?? 0x868E96
         self.init(.sRGB,

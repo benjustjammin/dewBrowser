@@ -1644,7 +1644,7 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     @ObservationIgnored private var itemIDs: [ObjectIdentifier: UUID] = [:]
     @ObservationIgnored private var progressObservations: [UUID: NSKeyValueObservation] = [:]
 
-    static var directory: URL {
+    nonisolated static var directory: URL {
         #if os(macOS)
         URL.downloadsDirectory
         #else
@@ -1669,6 +1669,62 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
 
     func downloadDidFinish(_ download: WKDownload) {
         guard let id = itemIDs.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        finished(id)
+    }
+
+    #if os(macOS)
+    /// Fetches a download itself (see BrowserTab.fetchDownload for why), into Downloads like WebKit's. Cookies are sent by
+    /// hand and nothing is kept, so spaces never share them.
+    func fetch(_ url: URL, named filename: String?, cookies: [HTTPCookie], referrer: URL?) {
+        var request = URLRequest(url: url)
+        let host = url.host()?.lowercased() ?? ""
+        let matching = cookies.filter { cookie in
+            let domain = cookie.domain.lowercased()
+            let domainMatches = domain.hasPrefix(".") ? host == domain.dropFirst() || host.hasSuffix(domain) : host == domain
+            return domainMatches && url.path().hasPrefix(cookie.path) && (!cookie.isSecure || url.scheme == "https")
+        }
+        for (field, value) in HTTPCookie.requestHeaderFields(with: matching) { request.setValue(value, forHTTPHeaderField: field) }
+        if let referrer { request.setValue(referrer.absoluteString, forHTTPHeaderField: "Referer") }
+
+        let item = Item(filename: filename ?? url.lastPathComponent, fileURL: Self.directory.appending(path: filename ?? url.lastPathComponent))
+        items.insert(item, at: 0)
+        let id = item.id
+        let task = Self.session.downloadTask(with: request) { [weak self] temp, response, error in
+            // The temporary file goes when this returns, so it's moved here.
+            var saved: URL?
+            if let temp, error == nil, ((response as? HTTPURLResponse)?.statusCode ?? 200) < 400 {
+                let destination = Self.uniqueURL(for: filename ?? response?.suggestedFilename ?? url.lastPathComponent)
+                if (try? FileManager.default.moveItem(at: temp, to: destination)) != nil { saved = destination }
+            }
+            Task { @MainActor in
+                guard let self else { return }
+                self.progressObservations[id] = nil
+                if let saved {
+                    self.update(id) { $0.fileURL = saved; $0.filename = saved.lastPathComponent }
+                    self.finished(id)
+                } else {
+                    self.update(id) { $0.failed = true }
+                }
+            }
+        }
+        progressObservations[id] = task.progress.observe(\.fractionCompleted) { [weak self] progress, _ in
+            let fraction = progress.fractionCompleted
+            Task { @MainActor in self?.update(id) { if fraction - $0.progress >= 0.01 { $0.progress = fraction } } }
+        }
+        task.resume()
+    }
+
+    /// No cookie jar or cache of its own: each download gets exactly its space's cookies for the site.
+    private nonisolated static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration)
+    }()
+    #endif
+
+    private func finished(_ id: UUID) {
         progressObservations[id] = nil
         update(id) { $0.finished = true; $0.progress = 1 }
         save()
@@ -1696,7 +1752,7 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         change(&items[index])
     }
 
-    private static func uniqueURL(for filename: String) -> URL {
+    private nonisolated static func uniqueURL(for filename: String) -> URL {
         let name = filename.isEmpty ? "download" : filename
         var url = directory.appending(path: name)
         let base = url.deletingPathExtension().lastPathComponent

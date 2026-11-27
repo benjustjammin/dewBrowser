@@ -32,6 +32,8 @@ final class BrowserTab: NSObject, Identifiable {
     @ObservationIgnored private(set) var loadedWebView: WKWebView?
     @ObservationIgnored private var popupConfiguration: WKWebViewConfiguration?
     @ObservationIgnored private var observations: [NSKeyValueObservation] = []
+    /// Whether the last page load in the main frame was a plain GET (only those can be fetched again for a download).
+    @ObservationIgnored var lastNavigationWasGet = true
     /// When the tab was last on screen; used to suspend tabs that haven't been looked at for a while.
     @ObservationIgnored var lastActive = Date()
     /// Back/forward list and scroll position saved when the tab was suspended, restored when it's shown again.
@@ -291,16 +293,44 @@ extension BrowserTab: WKNavigationDelegate {
             webView.load(URLRequest(url: clean))
             return .cancel
         }
+        #if os(macOS)
+        if navigationAction.targetFrame?.isMainFrame != false { lastNavigationWasGet = navigationAction.request.httpMethod == "GET" }
+        if navigationAction.shouldPerformDownload, navigationAction.request.httpMethod == "GET", fetchDownload(url, named: nil, in: webView) {
+            return .cancel
+        }
+        #endif
         if navigationAction.shouldPerformDownload { return .download }
         return .allow
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
-        if let http = navigationResponse.response as? HTTPURLResponse,
-           http.value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true {
-            return .download
+    #if os(macOS)
+    /// Hands a plain (GET) http(s) download to Dew's own downloader rather than WebKit's: what WebKit's download process
+    /// saves, macOS marks "created by an app sandbox: don't open", so a downloaded app or installer couldn't be opened.
+    /// The space's cookies for the site go along, so downloads behind a sign-in still work.
+    private func fetchDownload(_ url: URL, named filename: String?, in webView: WKWebView) -> Bool {
+        guard url.scheme == "http" || url.scheme == "https", let store else { return false }
+        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+        let referrer = webView.url
+        Task {
+            let cookies = await cookieStore.allCookies()
+            store.downloads.fetch(url, named: filename, cookies: cookies, referrer: referrer)
         }
-        return navigationResponse.canShowMIMEType ? .allow : .download
+        downloadStarted(in: webView)
+        return true
+    }
+    #endif
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse) async -> WKNavigationResponsePolicy {
+        let attachment = (navigationResponse.response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true
+        guard attachment || !navigationResponse.canShowMIMEType else { return .allow }
+        #if os(macOS)
+        if navigationResponse.isForMainFrame, lastNavigationWasGet, let url = navigationResponse.response.url,
+           fetchDownload(url, named: navigationResponse.response.suggestedFilename, in: webView) {
+            return .cancel
+        }
+        #endif
+        return .download
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {

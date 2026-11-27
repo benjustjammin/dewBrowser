@@ -82,7 +82,14 @@ goes through your own iCloud. Chat only sends what you ask, to the provider you 
 
 ## Getting it
 
-Dew needs macOS 15.4 or later, or iOS 18 or later. It isn't on the App Store yet, so for now you build it yourself:
+**Mac:** [download Dew](https://github.com/benjustjammin/dewBrowser/releases/latest/download/Dew.dmg) (3.4 MB), open it
+and drag Dew into Applications. It needs macOS 15.4 or later and runs on Apple silicon and Intel. It's signed and
+notarised by Apple, so it opens like any other app. New versions are posted on the
+[releases page](https://github.com/benjustjammin/dewBrowser/releases).
+
+**iPhone and iPad:** not on the App Store yet. It needs iOS 18 or later.
+
+**Building it yourself:**
 
 ```sh
 brew install xcodegen
@@ -99,6 +106,24 @@ or removing files.
 # How it works
 
 The rest of this file is notes on how Dew is put together, mostly so I can find things again.
+
+## Making a Mac download
+
+The download on GitHub is signed with the team's cloud-managed Developer ID (no certificate needed on the Mac) and
+notarised through the Xcode account:
+
+```sh
+xcodebuild archive -project Dew.xcodeproj -scheme Dew-macOS -configuration Release \
+  -archivePath /tmp/dewdist/Dew.xcarchive -allowProvisioningUpdates
+# ExportOptions.plist: method developer-id, destination upload, signingStyle automatic, teamID UTJ8CD785K
+xcodebuild -exportArchive -archivePath /tmp/dewdist/Dew.xcarchive -exportOptionsPlist ExportOptions.plist \
+  -exportPath /tmp/dewdist/export -allowProvisioningUpdates          # uploads to Apple's notary service
+xcodebuild -exportNotarizedApp -archivePath /tmp/dewdist/Dew.xcarchive -exportPath /tmp/dewdist/notarized   # once approved
+```
+
+Then put `Dew.app` and an `Applications` link in a folder, `hdiutil create -volname Dew -srcfolder … -format UDZO Dew.dmg`,
+check it with `spctl -a -t exec -vv` and `xcrun stapler validate`, and attach it to a release as `Dew.dmg` (the README's
+link always points at the latest release's `Dew.dmg`).
 
 ## Screenshots and demo mode
 

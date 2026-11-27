@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Using Dew</title>
+<style>
+  :root { --text: #1d1d1f; --muted: #6e6e73; --line: #e5e5ea; --soft: #f5f5f7; --accent: #2d5fea; }
+  @media (prefers-color-scheme: dark) { :root { --text: #f5f5f7; --muted: #98989d; --line: #38383a; --soft: #1c1c1e; --accent: #62a8ff; }
+    body { background: #000; } }
+  body { font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--text); max-width: 760px;
+         margin: 0 auto; padding: 44px 22px 64px; }
+  h1 { font-size: 32px; margin: 0 0 6px; letter-spacing: -0.02em; }
+  h2 { font-size: 22px; margin: 52px 0 12px; letter-spacing: -0.01em; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  figure { margin: 16px 0 20px; }
+  figure img { width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); }
+  li { margin: 6px 0; } ul ul { margin-top: 4px; }
+  code { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--soft); padding: 1px 5px; border-radius: 5px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  td { padding: 8px 10px; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { white-space: nowrap; font-weight: 600; width: 1%; }
+  body > p:first-of-type { color: var(--muted); }
+</style>
+</head>
+<body>
+<!-- Shown in Dew (Help › Dew Guide on the Mac, Settings › Dew Guide on iPhone) straight from GitHub Pages, so editing
+     this page or the GIFs in docs/gifs/ updates it in the app without a new build. -->
+<h1>Using Dew</h1>
+<p>A quick tour of the things worth knowing. Everything here is on the Mac; most of it works the same on iPhone and iPad, where the menu (⋯) has the same options.</p>
+<ul><li><a href="#spaces-and-where-your-tabs-go">Spaces and where your tabs go</a></li><li><a href="#tab-groups-and-pinned-tabs">Tab groups and pinned tabs</a></li><li><a href="#chat">Chat</a></li><li><a href="#chrome-extensions">Chrome extensions</a></li><li><a href="#privacy">Privacy</a></li><li><a href="#keyboard-shortcuts-worth-learning">Keyboard shortcuts worth learning</a></li></ul>
+<h2 id="spaces-and-where-your-tabs-go">Spaces and where your tabs go</h2>
+<figure><img src="gifs/spaces-tabs.gif" alt="Switching between the Personal and Work spaces, moving tabs to the side, and hiding them" loading="lazy"></figure>
+<p>A space is a separate browser inside Dew: its own tabs, history, cookies and logins. Sign in to your work Google account in Work and your own in Personal, and neither knows about the other.</p>
+<ol><li><strong>Switch spaces</strong> with ⌃1, ⌃2 and so on, or click the space's name at the top left.</li><li><strong>Make a new one</strong> from the space menu › New Space…, and give it a name, an icon and a colour.</li><li><strong>Put your tabs down the side</strong> with ⌘S, or in Settings › Appearance › Tabs. ⌘S again puts them back on top.</li><li><strong>Hide them</strong> for the whole window with ⌥⌘S. Move the pointer to the top (or the left edge, with tabs on the side) and they slide back in.</li></ol>
+<h2 id="tab-groups-and-pinned-tabs">Tab groups and pinned tabs</h2>
+<figure><img src="gifs/groups-pinned.gif" alt="Collapsing and opening a tab group, then pinning a tab and closing it" loading="lazy"></figure>
+<p><strong>Groups</strong> keep related tabs together in a tray with a name.</p>
+<ol><li>Right-click a tab › <strong>Add to New Group</strong>. Add more with right-click › Add to Group, or drag them in.</li><li>Click the group's name to <strong>collapse</strong> it to one chip, and again to open it.</li><li>Right-click the name to rename it, open a new tab in it, or close the whole group.</li><li>Tip: in Settings › General you can have <strong>middle-click</strong> open links into the current tab's group.</li></ol>
+<p><strong>Pinned tabs</strong> are for the sites you always have open.</p>
+<ol><li>Right-click a tab › <strong>Pin Tab</strong>, or press ⌥⌘P. It becomes a small icon next to the space name.</li><li><strong>⌘W doesn't remove it.</strong> It just puts it away: the page is unloaded to save memory, and next time you click it, it opens where you pinned it.</li><li>To get rid of one, unpin it first.</li></ol>
+<h2 id="chat">Chat</h2>
+<figure><img src="gifs/chat.gif" alt="Opening Chat beside a page with ⌘E and typing a question about it" loading="lazy"></figure>
+<ol><li>Press <strong>⌘E</strong> (or the ✨ in the address bar). Chat opens beside the page you're on, and that page is already shared with it.</li><li>Ask anything: "summarise this", "what does this mean", "compare these two". Anything you've selected on the page goes along too.</li><li>Press <strong>+</strong> to bring in other open tabs, from any space. ✕ on a tab's chip stops sharing it.</li><li>Chat can also tidy up for you, like closing duplicate tabs or grouping them, and there's an <strong>Undo</strong> if it gets it wrong.</li></ol>
+<p>The first time, Dew asks which AI to use (Settings › AI Chat): Claude or ChatGPT with your own key or account, or a model running on your Mac. Nothing is sent anywhere until you ask a question.</p>
+<h2 id="chrome-extensions">Chrome extensions</h2>
+<figure><img src="gifs/extension.gif" alt="Adding Dark Reader from the Chrome Web Store and opening its popup" loading="lazy"></figure>
+<ol><li>Find an extension in the <a href="https://chromewebstore.google.com/category/extensions">Chrome Web Store</a>.</li><li>Click <strong>Add to Dew</strong> in the address bar (where Chrome's "Add to Chrome" would be).</li><li>Dew shows what the extension will be able to see and change. Click <strong>Add Extension</strong>.</li><li>Its button appears in the address bar. Click it for its popup, right-click it for its options.</li></ol>
+<p>Manage them in Settings › Extensions: turn one off, hide its button, or remove it. Extensions never run in private browsing. Plenty work (Dark Reader, content blockers…), but some don't yet, 1Password included, because they rely on parts of Chrome that Safari's engine doesn't have. If you use 1Password, its app's Universal Autofill (⌘\) fills logins in Dew instead.</p>
+<h2 id="privacy">Privacy</h2>
+<figure><img src="gifs/privacy.gif" alt="The ad blocking shield in the address bar, then Settings › Privacy" loading="lazy"></figure>
+<p>Most of this is on from the start, so there's nothing you need to do. To change it:</p>
+<ol><li>The <strong>shield</strong> in the address bar turns ad and tracker blocking off and on. Turn it off if a site doesn't work properly.</li><li><strong>Settings › Privacy</strong> has the rest: leave them alone.<ul><li><strong>Cookie banners:</strong> Dew answers them for you. <em>Reject automatically</em> is the default; you can choose Accept, or</li><li><strong>Clear automatically:</strong> per space, clear history or cookies daily, weekly, monthly or whenever you quit Dew.</li></ul></li><li>Tracking tags on links (<code>utm_…</code>, <code>fbclid</code> and the rest) are removed before the page opens.</li><li>For browsing that leaves nothing behind, open a <strong>private tab</strong> (⇧⌘N). Dew turns grey while you're in private browsing, and everything is forgotten when you close the last private tab.</li></ol>
+<h2 id="keyboard-shortcuts-worth-learning">Keyboard shortcuts worth learning</h2>
+<table><tr><td>⌘T / ⌘W</td><td>New tab / close tab (pinned tabs are put away, not closed)</td></tr><tr><td>⇧⌘T</td><td>Reopen the last closed tab</td></tr><tr><td>⌘L</td><td>Go to the address bar</td></tr><tr><td>⌃1, ⌃2…</td><td>Switch space</td></tr><tr><td>⌘1…⌘9</td><td>Go to a tab</td></tr><tr><td>⌘E</td><td>Chat</td></tr><tr><td>⌘S / ⌥⌘S</td><td>Tabs on the side / hide tabs</td></tr><tr><td>⌥⌘P</td><td>Pin or unpin a tab</td></tr><tr><td>⌥⌘T</td><td>Open a tab beside this one (split view)</td></tr><tr><td>⌘Y</td><td>History</td></tr><tr><td>⌘D</td><td>Bookmark the page</td></tr></table>
+<p>All of them are listed in Settings › Shortcuts.</p>
+</body>
+</html>

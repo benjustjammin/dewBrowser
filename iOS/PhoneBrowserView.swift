@@ -410,6 +410,10 @@ struct SettingsSheet: View {
                         // Once Settings has closed, so the welcome sheet can open.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { store.showsWelcome = true }
                     }
+                    Button("Dew Guide") {
+                        dismiss()
+                        store.newTab(url: BrowserStore.guideURL)
+                    }
                 }
             }
             .navigationTitle("Settings")

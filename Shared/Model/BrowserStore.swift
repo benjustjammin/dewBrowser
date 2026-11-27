@@ -489,6 +489,9 @@ final class BrowserStore {
         newTab(url: nil)
     }
 
+    /// The guide (GIFs and how-tos), from GitHub Pages: updating it there updates it in the app, with no new build.
+    static let guideURL = URL(string: "https://benjustjammin.github.io/dewBrowser/guide.html")!
+
     /// Dew's own History page, shown in a tab (Mac).
     static let historyURL = URL(string: "dew://history")!
 
@@ -826,16 +829,20 @@ final class BrowserStore {
         return result
     }
 
+    /// Bookmarks known to be in iCloud, per iCloud environment (see CloudSync.environment): a bookmark missing from
+    /// iCloud is only taken as deleted elsewhere if this environment had it before.
     private var syncedBookmarkKeys: Set<String> {
-        get { Set(UserDefaults.standard.stringArray(forKey: "syncedBookmarkKeys") ?? []) }
-        set { UserDefaults.standard.set(Array(newValue), forKey: "syncedBookmarkKeys") }
+        get { Set(UserDefaults.standard.stringArray(forKey: "syncedBookmarkKeys-" + CloudSync.environment) ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "syncedBookmarkKeys-" + CloudSync.environment) }
     }
 
     /// Merges iCloud's bookmarks with ours. A bookmark missing on one side counts as deleted only if
     /// this device had already confirmed syncing it (`syncedBookmarkKeys`); otherwise it's new and is
     /// copied across. Returns what to upload/delete and the keys to remember once that succeeds.
     func reconcileBookmarks(remote: [SyncedBookmark]) -> (save: [SyncedBookmark], delete: [String], keys: Set<String>) {
-        let known = syncedBookmarkKeys
+        // An iCloud with no bookmarks at all is a new or reset store, not "everything was deleted elsewhere":
+        // this device's bookmarks go up rather than being removed.
+        let known = remote.isEmpty ? [] : syncedBookmarkKeys
         let remoteByKey = Dictionary(remote.map { ($0.key, $0) }, uniquingKeysWith: { a, b in a.modified >= b.modified ? a : b })
         var localByKey = Dictionary(syncedBookmarks().map { ($0.key, $0) }, uniquingKeysWith: { a, _ in a })
         var save: [SyncedBookmark] = []

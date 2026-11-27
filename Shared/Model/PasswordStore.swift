@@ -48,6 +48,8 @@ final class PasswordStore {
     func loadIfNeeded() {
         guard !loaded else { return }
         loaded = true
+        // Demo runs (screenshots, recordings) never show or touch your real passwords.
+        guard !UserDefaults.standard.bool(forKey: "DewDemo") else { return }
         guard let data = try? Data(contentsOf: Self.fileURL) else { return }
         guard let key = encryptionKey(create: false),
               let box = try? AES.GCM.SealedBox(combined: data),
@@ -182,6 +184,7 @@ final class PasswordStore {
     // MARK: Storage
 
     private func persist() {
+        guard !UserDefaults.standard.bool(forKey: "DewDemo") else { return }   // never overwrite real passwords from a demo
         guard !isLocked, let key = encryptionKey(create: true),
               let data = try? JSONEncoder().encode(logins),
               let sealed = try? AES.GCM.seal(data, using: key).combined else { return }

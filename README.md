@@ -19,6 +19,9 @@ account to make, nothing to install alongside it, and it doesn't phone home.
 
 ## What it does
 
+New to Dew? **[The guide](https://benjustjammin.github.io/dewBrowser/guide.html)** shows the main things in short
+clips, with step-by-step how-tos. It's in the app too: Help › Dew Guide on the Mac, Settings › Dew Guide on iPhone.
+
 **Spaces.** Keep Personal and Work (or whatever you like) apart in one window. Each space has its own logins,
 cookies, history and tabs, so being signed in to one Google account at work and another at home just works. ⌃1, ⌃2
 and so on switch between them, and you can give each a colour, from bright ones to plain greys and black.
@@ -133,7 +136,10 @@ and no saving or iCloud sync, so real browsing never appears. `-DewDemoTab 2` sh
 `-DewOpenChat YES -DewChatSample YES` opens Chat with a sample conversation (no API key or request needed), and setting
 keys work as arguments too (`-tabsInSidebar YES`, `-appearanceMode dark`). In demo mode the Mac window opens at
 1440 × 900. Sizes in `docs/screenshots/` fit App Store Connect where it matters: `mac/` 2880 × 1800 (Mac App Store),
-`iphone/` 1320 × 2868 (iPhone 6.9″); `duo/` is the iPhone Duo's own size, for this README only. The icon at the top is
+`iphone/` 1320 × 2868 (iPhone 6.9″); `duo/` is the iPhone Duo's own size, for this README only. The guide's clips
+(`docs/gifs/`) are screen recordings of demo mode, turned into GIFs at 8 frames a second and 800 px wide. The guide
+itself is `docs/guide.html`, served by GitHub Pages and opened in a tab by Help › Dew Guide (Mac) or Settings › Dew
+Guide (iOS), so changing the page or a GIF and pushing updates it in the app without a new build. The icon at the top is
 `docs/images/dew-halo-*.png`, rendered from `Tools/AppIcon-Halo*.svg`.
 
 ## Settings

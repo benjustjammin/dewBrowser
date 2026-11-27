@@ -1,4 +1,5 @@
 import CloudKit
+import Security
 import CryptoKit
 import Observation
 #if os(macOS)
@@ -57,6 +58,24 @@ final class CloudSync {
     private static let zoneID = CKRecordZone.ID(zoneName: "DewSync", ownerName: CKCurrentUserDefaultName)
     private static let recordType = "DeviceSession"
     private static let bookmarkType = "Bookmark"
+
+    /// Which iCloud environment this build uses: Xcode builds talk to Development; the GitHub download, TestFlight and
+    /// the App Store to Production. They hold different data, so each keeps its own record of what's been synced.
+    static let environment: String = {
+        #if os(macOS)
+        if let task = SecTaskCreateFromSelf(nil),
+           let value = SecTaskCopyValueForEntitlement(task, "com.apple.developer.icloud-container-environment" as CFString, nil) as? String {
+            return value
+        }
+        return "Development"
+        #else
+        return Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") != nil ? "Development" : "Production"
+        #endif
+    }()
+
+    /// Demo runs (`-DewDemo`) never touch iCloud: their sample data must not reach your account, nor yours them.
+    private static let isDemo = UserDefaults.standard.bool(forKey: "DewDemo")
+    private var isActive: Bool { isEnabled && !Self.isDemo }
 
     var isEnabled = UserDefaults.standard.object(forKey: "iCloudTabSync") as? Bool ?? true {
         didSet {
@@ -128,7 +147,7 @@ final class CloudSync {
     /// Call when tabs change; publishes a few seconds later (coalescing bursts of changes). Only this device's tabs
     /// go up (and only if they changed); the full fetch waits for the regular refresh unless bookmarks need merging.
     func setNeedsPush() {
-        guard isEnabled else { return }
+        guard isActive else { return }
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
@@ -144,7 +163,7 @@ final class CloudSync {
 
     /// Publishes this device's tabs, then fetches the other devices'.
     func refresh() async {
-        guard isEnabled else { return }
+        guard isActive else { return }
         await push()
         await fetch()
     }
@@ -168,7 +187,7 @@ final class CloudSync {
     }
 
     private func push() async {
-        guard isEnabled, let snapshot, await ensureReady() else { return }
+        guard isActive, let snapshot, await ensureReady() else { return }
         let session = DeviceSession(id: Self.deviceID, name: Self.deviceName, platform: Self.platform,
                                     updated: .now, spaces: snapshot())
         // Skip if nothing changed (apart from the timestamp) since the last push.
@@ -193,7 +212,7 @@ final class CloudSync {
     }
 
     private func fetch() async {
-        guard isEnabled, await ensureReady() else { return }
+        guard isActive, await ensureReady() else { return }
         do {
             var devices: [DeviceSession] = []
             var remoteBookmarks: [SyncedBookmark] = []

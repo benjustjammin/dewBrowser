@@ -315,6 +315,7 @@ struct BrowserCommands: Commands {
         // checkmark would take the icon's place in the menu.
         CommandGroup(replacing: .help) {
             MenuItem("Welcome to Dew", systemImage: "hand.wave") { store.showsWelcome = true }
+            MenuItem("Dew Guide", systemImage: "book") { store.newTab(url: BrowserStore.guideURL) }
         }
 
         CommandGroup(before: .systemServices) {

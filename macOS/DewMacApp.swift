@@ -202,6 +202,14 @@ struct BrowserCommands: Commands {
             Divider()
             MenuItem(store.isChatOpen ? "Hide Chat" : "Show Chat", systemImage: "sparkles") { store.isChatOpen.toggle() }
                 .keyboardShortcut("e")
+            MenuItem(store.tabsInSidebar ? "Show Tabs at the Top" : "Show Tabs in Sidebar", systemImage: "sidebar.left") {
+                withAnimation(.snappy(duration: 0.25)) { store.tabsInSidebar.toggle() }
+            }
+            .keyboardShortcut("s")
+            MenuItem(store.autoHideTabs ? "Always Show Tabs" : "Auto-hide Tabs", systemImage: "rectangle.dashed") {
+                withAnimation(.snappy(duration: 0.25)) { store.autoHideTabs.toggle() }
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
             Divider()
             MenuItem(store.matchSiteColor ? "Stop Matching Website Colour" : "Match Toolbar to Website Colour", systemImage: "paintpalette") {
                 store.matchSiteColor.toggle()
@@ -307,6 +315,10 @@ struct BrowserCommands: Commands {
 
         // Shown as actions (like Safari's "Hide Bookmarks Bar") so they keep their icons; a toggle's
         // checkmark would take the icon's place in the menu.
+        CommandGroup(replacing: .help) {
+            MenuItem("Welcome to Dew", systemImage: "hand.wave") { store.showsWelcome = true }
+        }
+
         CommandGroup(before: .systemServices) {
             if store.defaultBrowser.isDefault == false {
                 MenuItem("Set Dew as Default Browser…", systemImage: "globe") { store.defaultBrowser.makeDefault() }

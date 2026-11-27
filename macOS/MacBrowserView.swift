@@ -1,10 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let cardColor = Color(nsColor: .textBackgroundColor)
-private let stripHeight: CGFloat = 42
+let cardColor = Color(nsColor: .textBackgroundColor)
+let stripHeight: CGFloat = 42
 /// Height of tabs, the space capsule and strip buttons; they're centred on the window buttons.
-private let stripItemHeight: CGFloat = 30
+let stripItemHeight: CGFloat = 30
 
 struct MacBrowserView: View {
     @Environment(BrowserStore.self) private var store
@@ -16,13 +16,22 @@ struct MacBrowserView: View {
         @Bindable var store = store
         let space = store.currentSpace
 
+        // Docked tabs take their own space; auto-hidden ones slide in over the page from the edge.
+        let docked = !store.autoHideTabs
+        HStack(spacing: 0) {
+        if docked && store.tabsInSidebar { TabSidebar() }
         VStack(spacing: 0) {
-            TabStrip()
-                .zIndex(1)
+            if docked && !store.tabsInSidebar {
+                TabStrip()
+                    .zIndex(1)
+            }
             HStack(spacing: 6) {
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        NavigationBar(tab: store.selectedTab)
+                        // Tabs hidden: 30 pt tall from 6 pt down, centred on the window buttons' line (21 pt), and
+                        // starting after them.
+                        NavigationBar(tab: store.selectedTab, height: docked ? 38 : 30)
+                            .padding(.leading, docked ? 0 : 72)
                         if store.showBookmarksBar && !store.currentBookmarks.isEmpty {
                             BookmarksBar()
                         }
@@ -59,8 +68,16 @@ struct MacBrowserView: View {
                 }
             }
             .animation(.easeOut(duration: 0.18), value: store.isChatOpen)
-            .padding([.horizontal, .bottom], 6)
+            // Tabs hidden or in the sidebar: an even 6 pt rim all round, so the card's corners follow the window's.
+            .padding(.top, !docked || store.tabsInSidebar ? 6 : 0)
+            .padding(.leading, docked && store.tabsInSidebar ? 0 : 6)
+            .padding([.trailing, .bottom], 6)
         }
+        }
+        .overlay(alignment: store.tabsInSidebar ? .leading : .top) {
+            if !docked { AutoHidingTabs() }
+        }
+        .animation(.snappy(duration: 0.25), value: store.autoHideTabs)
         .background {
             ZStack {
                 Color(nsColor: .windowBackgroundColor)
@@ -91,18 +108,25 @@ struct MacBrowserView: View {
         .tint(space.color)
         .sheet(item: $store.spaceEditor) { SpaceEditorView(state: $0) }
         .sheet(isPresented: $store.isImporting) { ImportView() }
+        .sheet(isPresented: $store.showsWelcome, onDismiss: { store.finishWelcome() }) { WelcomeView() }
         // Private browsing: dark chrome, like Safari's private windows.
         .environment(\.colorScheme, store.isPrivate ? .dark : colorScheme)
-        .background(TrafficLightAligner(centerY: stripItemCenterY))
+        // The window buttons stay on the tabs' centre line in every layout. With the tabs hidden they sit in the
+        // page card's corner (the address bar is shortened to share that line), as far in from its edge as below its top.
+        .background(TrafficLightAligner(centerY: stripItemCenterY, shiftX: store.autoHideTabs ? 5 : 0))
         .onAppear {
             store.applyAppearance()
+            store.applyAppIcon()
             MiddleClickHandler.install(store: store)
             // Demo (screenshots): a 1440 × 900 window, a size the Mac App Store accepts.
             if BrowserStore.isDemo {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     guard let window = NSApp.windows.first(where: { $0.isVisible && $0.styleMask.contains(.titled) }) else { return }
                     window.setContentSize(NSSize(width: 1440, height: 900))
-                    window.center()
+                    // On the main display (where test input reaches it), centred.
+                    if let screen = NSScreen.screens.first?.visibleFrame {
+                        window.setFrameOrigin(NSPoint(x: screen.midX - window.frame.width / 2, y: screen.midY - window.frame.height / 2))
+                    }
                 }
             }
         }
@@ -110,26 +134,33 @@ struct MacBrowserView: View {
 }
 
 /// Vertical centre of the space pill and tabs, measured from the top of the window.
-private let stripItemCenterY: CGFloat = 21
+let stripItemCenterY: CGFloat = 21
 
 /// Moves the close/minimise/zoom buttons down so they sit on the same line as the space pill and
 /// tabs, like Dia. AppKit re-lays out the title bar on resize, so the position is re-applied then.
 private struct TrafficLightAligner: NSViewRepresentable {
     let centerY: CGFloat
+    /// Extra distance from the left, on top of where macOS puts the buttons.
+    var shiftX: CGFloat = 0
 
     func makeNSView(context: Context) -> AlignerView {
         let view = AlignerView()
         view.centerY = centerY
+        view.shiftX = shiftX
         return view
     }
 
     func updateNSView(_ view: AlignerView, context: Context) {
         view.centerY = centerY
+        view.shiftX = shiftX
         view.align()
     }
 
     final class AlignerView: NSView {
         var centerY: CGFloat = 19
+        var shiftX: CGFloat = 0
+        /// Each button's own x position, so the shift is applied from there rather than adding up.
+        private var baseX: [NSWindow.ButtonType: CGFloat] = [:]
         private var observers: [NSObjectProtocol] = []
 
         override func viewDidMoveToWindow() {
@@ -154,8 +185,11 @@ private struct TrafficLightAligner: NSViewRepresentable {
                 guard let button = window.standardWindowButton(type), let container = button.superview else { continue }
                 let height = button.frame.height
                 let y = container.isFlipped ? centerY - height / 2 : container.bounds.height - centerY - height / 2
-                if abs(button.frame.origin.y - y) > 0.5 {
-                    button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: y))
+                let base = baseX[type] ?? button.frame.origin.x
+                baseX[type] = base
+                let x = base + shiftX
+                if abs(button.frame.origin.y - y) > 0.5 || abs(button.frame.origin.x - x) > 0.5 {
+                    button.setFrameOrigin(NSPoint(x: x, y: y))
                 }
             }
         }
@@ -164,12 +198,12 @@ private struct TrafficLightAligner: NSViewRepresentable {
 
 // MARK: - Tab strip
 
-private struct TabStrip: View {
+struct TabStrip: View {
     @Environment(BrowserStore.self) private var store
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Color.clear.frame(width: 70, height: 1) // traffic lights
+            Color.clear.frame(width: store.autoHideTabs ? 75 : 70, height: 1) // traffic lights (nudged in when auto-hiding)
             SpaceCapsule()
             TabRow()
             TabListMenu()
@@ -178,18 +212,49 @@ private struct TabStrip: View {
         .padding(.trailing, 10)
         .frame(height: stripHeight, alignment: .top)
         .onHover { store.isPointerInTabStrip = $0 }
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(WindowDragGesture())
-                .allowsWindowActivationEvents(true)
-                .onTapGesture(count: 2) { NSApp.keyWindow?.zoom(nil) }
-        }
+        .background { WindowDragArea() }
     }
 }
 
 /// Dia-style capsule: the current space's name (in its colour) followed by its pinned tabs.
 /// Clicking the name lists every space with its keyboard shortcut.
+/// The space menu: switch space, private browsing, next/previous, rename, new and manage spaces (with their
+/// shortcuts). Used by the space pill in the tab strip and the space header in the sidebar.
+struct SpaceMenuContent: View {
+    @Environment(BrowserStore.self) private var store
+
+    var body: some View {
+        let space = store.currentSpace
+        Section("Spaces") {
+            ForEach(Array(store.spaces.enumerated()), id: \.element.id) { index, item in
+                Toggle(isOn: Binding(get: { item.id == store.selectedSpaceID },
+                                     set: { _ in store.selectSpace(item.id) })) {
+                    Label(item.name, systemImage: item.symbol)
+                }
+                .keyboardShortcut(index < 9 ? KeyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control) : nil)
+            }
+        }
+        Divider()
+        if store.isPrivate {
+            Button("Leave Private Browsing") { store.exitPrivate() }
+            Button("Close All Private Tabs") { store.closeAllPrivateTabs() }
+        } else {
+            Button("New Private Tab") { store.enterPrivate(); store.newBlankTab() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+        }
+        Divider()
+        Button("Next Space") { store.selectAdjacentSpace(1) }
+            .keyboardShortcut(.rightArrow, modifiers: [.control, .option])
+        Button("Previous Space") { store.selectAdjacentSpace(-1) }
+            .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
+        Divider()
+        Button("Rename “\(space.name)”…") { store.beginEditing(space) }
+        Button("New Space…") { store.beginNewSpace() }
+            .keyboardShortcut("n", modifiers: [.command, .option])
+        SettingsLink { Text("Manage Spaces…") }
+    }
+}
+
 private struct SpaceCapsule: View {
     @Environment(BrowserStore.self) private var store
 
@@ -204,33 +269,7 @@ private struct SpaceCapsule: View {
                     .padding(.leading, 10)
             }
             Menu {
-                Section("Spaces") {
-                    ForEach(Array(store.spaces.enumerated()), id: \.element.id) { index, item in
-                        Toggle(isOn: Binding(get: { item.id == store.selectedSpaceID },
-                                             set: { _ in store.selectSpace(item.id) })) {
-                            Label(item.name, systemImage: item.symbol)
-                        }
-                        .keyboardShortcut(index < 9 ? KeyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .control) : nil)
-                    }
-                }
-                Divider()
-                if store.isPrivate {
-                    Button("Leave Private Browsing") { store.exitPrivate() }
-                    Button("Close All Private Tabs") { store.closeAllPrivateTabs() }
-                } else {
-                    Button("New Private Tab") { store.enterPrivate(); store.newBlankTab() }
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
-                }
-                Divider()
-                Button("Next Space") { store.selectAdjacentSpace(1) }
-                    .keyboardShortcut(.rightArrow, modifiers: [.control, .option])
-                Button("Previous Space") { store.selectAdjacentSpace(-1) }
-                    .keyboardShortcut(.leftArrow, modifiers: [.control, .option])
-                Divider()
-                Button("Rename “\(space.name)”…") { store.beginEditing(space) }
-                Button("New Space…") { store.beginNewSpace() }
-                    .keyboardShortcut("n", modifiers: [.command, .option])
-                SettingsLink { Text("Manage Spaces…") }
+                SpaceMenuContent()
             } label: {
                 // Plain text: AppKit dims icons/labels drawn inside menu buttons.
                 Text(space.name)
@@ -296,21 +335,24 @@ private struct TabRow: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let items = StripItem.items(for: store.unpinnedTabs, store: store)
-            // Size per tab (a split counts as its tabs), then give each item the sum of its tabs' widths.
-            let flat = items.flatMap(\.tabs)
-            let selectedIndex = flat.firstIndex { store.isSelected($0) }
-            let sizing = TabSizing(count: flat.count, selectedIndex: selectedIndex,
-                                   available: proxy.size.width - Self.reserved, spacing: 0)
+            let layout = StripLayout.layout(store)
+            // Size per visible tab (a split counts as its tabs), then give each item the sum of its tabs' widths.
+            let sizing = TabSizing(count: layout.visibleTabs.count, selectedIndex: layout.visibleTabs.firstIndex { store.isSelected($0) },
+                                   available: proxy.size.width - Self.reserved - layout.labelsWidth, spacing: 0)
             let row = HStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    let start = items[..<index].reduce(0) { $0 + $1.tabs.count }
-                    let widths = Array(sizing.widths[start..<(start + item.tabs.count)])
-                    switch item {
-                    case .tab(let tab):
-                        TabItem(tab: tab, width: widths[0]).id(tab.id)
-                    case .split(_, let members):
-                        SplitTabItem(tabs: members, widths: widths).id(members[0].id)
+                ForEach(layout.segments) { segment in
+                    switch segment {
+                    case .item(let item):
+                        tabView(item, layout: layout, sizing: sizing)
+                    case .group(let group, let items):
+                        // Like Dia: the group's label and tabs inside one soft tray.
+                        HStack(spacing: 0) {
+                            GroupLabel(group: group).frame(height: stripItemHeight)
+                            ForEach(items, id: \.id) { tabView($0, layout: layout, sizing: sizing) }
+                        }
+                        .modifier(GroupTray())
+                        .environment(\.inGroupTray, true)
+                        .padding(.horizontal, 3)
                     }
                 }
                 Button { store.newBlankTab() } label: {
@@ -336,6 +378,63 @@ private struct TabRow: View {
             }
         }
         .frame(height: stripItemHeight)
+    }
+
+    /// A tab or split, at its share of the width (nothing if it's hidden in a collapsed group).
+    @ViewBuilder private func tabView(_ item: StripItem, layout: StripLayout.Layout, sizing: TabSizing) -> some View {
+        if let start = layout.offsets[item.id] {
+            let widths = Array(sizing.widths[start..<(start + item.tabs.count)])
+            switch item {
+            case .tab(let tab): TabItem(tab: tab, width: widths[0]).id(tab.id)
+            case .split(_, let members): SplitTabItem(tabs: members, widths: widths).id(members[0].id)
+            }
+        }
+    }
+}
+
+/// The tab order as the strip and sidebar show it: tabs and splits, with each group's run gathered together.
+@MainActor
+enum StripLayout {
+    enum Segment: Identifiable {
+        case item(StripItem)
+        case group(TabGroup, [StripItem])
+        var id: UUID {
+            switch self {
+            case .item(let item): item.id
+            case .group(let group, _): group.id
+            }
+        }
+    }
+
+    struct Layout {
+        var segments: [Segment] = []
+        /// The tabs that are drawn (not hidden in a collapsed group), for sizing.
+        var visibleTabs: [BrowserTab] = []
+        /// Each drawn item's first tab's index among `visibleTabs`.
+        var offsets: [UUID: Int] = [:]
+        var labelsWidth: CGFloat = 0
+    }
+
+    /// Tabs and splits in order, with each group's run of them gathered into one segment.
+    static func layout(_ store: BrowserStore) -> Layout {
+        var layout = Layout()
+        for item in StripItem.items(for: store.unpinnedTabs, store: store) {
+            if !item.tabs.allSatisfy({ store.isHiddenInCollapsedGroup($0) }) {
+                layout.offsets[item.id] = layout.visibleTabs.count
+                layout.visibleTabs += item.tabs
+            }
+            guard let group = store.group(containing: item.tabs[0].id) else {
+                layout.segments.append(.item(item))
+                continue
+            }
+            if case .group(let current, let items) = layout.segments.last, current.id == group.id {
+                layout.segments[layout.segments.count - 1] = .group(group, items + [item])
+            } else {
+                layout.segments.append(.group(group, [item]))
+                layout.labelsWidth += GroupLabel.width(for: group) + 6
+            }
+        }
+        return layout
     }
 }
 
@@ -560,7 +659,11 @@ enum MiddleClickHandler {
                 return nil
             }
             if let id = store.hoveredBookmarkID, let bookmark = store.bookmarks.first(where: { $0.id == id }) {
-                store.open(bookmark, inNewTab: true, select: false)
+                if store.middleClickAddsToGroup, let source = store.selectedTab, source.url != nil {
+                    store.openInGroup(bookmark.url, from: source)
+                } else {
+                    store.open(bookmark, inNewTab: true, select: false)
+                }
                 return nil
             }
             return event
@@ -597,18 +700,34 @@ private struct FadingText: View {
     }
 }
 
+extension EnvironmentValues {
+    /// Tabs inside a group's tray keep their hover highlight within it.
+    @Entry var inGroupTray = false
+}
+
 /// Hover highlight for an inactive tab, like Dia's: starts at the same top edge as the active tab
 /// and uses the same corner radius, filling the tab with just a small gap to its neighbours.
 private struct TabHoverShape: View {
     let colorScheme: ColorScheme
+    @Environment(\.inGroupTray) private var inGroupTray
 
     var body: some View {
+        let fill = Color.white.opacity(colorScheme == .dark ? 0.12 : 0.55)
+        if inGroupTray {
+            // Inset in the tray, its corners concentric with the tray's 9 pt radius.
+            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(fill).padding(3)
+        } else {
+            freeHover(fill)
+        }
+    }
+
+    private func freeHover(_ fill: Color) -> some View {
         // Measured from Dia: the hover sits 2 pt inside the active tab's top edge, is 32 pt tall and
         // has a 10 pt radius against the active tab's 12, so the two curves follow each other.
         let activeRise = stripItemCenterY - stripItemHeight / 2 - 3   // active tab top, above the tab's frame
         let rise = activeRise - 2
-        RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .fill(.white.opacity(colorScheme == .dark ? 0.12 : 0.55))
+        return RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(fill)
             .frame(height: 32)
             .offset(y: -rise)
             .padding(.horizontal, 5)   // even ~6 pt gap to the active tab, like Dia
@@ -654,7 +773,7 @@ private extension View {
     func siteColored(_ color: RGBColor?) -> some View { modifier(SiteColored(color: color)) }
 }
 
-private struct TabMenu: View {
+struct TabMenu: View {
     @Environment(BrowserStore.self) private var store
     let tab: BrowserTab
 
@@ -685,11 +804,13 @@ private struct TabMenu: View {
             Button("Separate Split View") { store.separateSplit(containing: tab) }
         }
         Divider()
+        TabGroupMenuItems(tab: tab)
+        Divider()
         Button("Close Tab") { store.close(tab) }
     }
 }
 
-private extension View {
+extension View {
     /// Drag a tab onto another to reorder (works between pinned and regular tabs too).
     func tabDragAndDrop(_ tab: BrowserTab) -> some View {
         modifier(TabDragAndDrop(tab: tab))
@@ -737,6 +858,7 @@ private struct StripButtonStyle: ButtonStyle {
 private struct NavigationBar: View {
     @Environment(BrowserStore.self) private var store
     let tab: BrowserTab?
+    var height: CGFloat = 38
 
     var body: some View {
         HStack(spacing: 2) {
@@ -799,7 +921,7 @@ private struct NavigationBar: View {
             .help(store.isChatOpen ? "Hide Chat (⌘E)" : "Chat with this tab (⌘E)")
         }
         .padding(.horizontal, 8)
-        .frame(height: 38)
+        .frame(height: height)
         .overlay(alignment: .bottom) {
             if let tab, tab.isLoading {
                 GeometryReader { proxy in
@@ -1154,7 +1276,7 @@ private struct StartPage: View {
         ZStack {
             VStack(spacing: 0) {
                 Spacer(minLength: 20)
-                DewMark(size: 56)
+                BouncingDewMark(size: 56, style: store.appIcon.markStyle)
                     .padding(.bottom, 22)
                 if store.isPrivate {
                     Label("Private browsing: pages aren't saved to history, and cookies are deleted when you close your last private tab.",

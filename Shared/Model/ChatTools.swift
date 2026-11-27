@@ -20,7 +20,7 @@ struct ChatToolResult {
 
 /// Something Chat did in the browser, shown in the conversation (with Undo where it makes sense).
 struct ChatAction: Identifiable {
-    enum Kind { case opened, closed, switched, read, searched, split, failed }
+    enum Kind { case opened, closed, switched, read, searched, split, grouped, failed }
     let id = UUID()
     let kind: Kind
     let text: String
@@ -38,6 +38,7 @@ struct ChatAction: Identifiable {
         case .read: "doc.text.magnifyingglass"
         case .searched: "clock.arrow.circlepath"
         case .split: "rectangle.split.2x1"
+        case .grouped: "folder"
         case .failed: "exclamationmark.triangle"
         }
     }
@@ -79,6 +80,12 @@ enum ChatTools {
                 "query": string("Words to look for. Empty returns the most recent pages."),
                 "limit": ["type": "integer", "description": "Most results to return (default 15, at most 50)."],
              ], required: ["query"])),
+        Spec(name: "group_tabs",
+             description: "Put tabs in a named tab group (shown together and collapsible). Use for requests like 'group my shopping tabs'. Tabs already in another group move to this one.",
+             parameters: object([
+                "tab_ids": ["type": "array", "items": ["type": "string"], "description": "IDs from list_tabs, all in the same space."],
+                "name": string("A short name for the group, like 'Shopping' or 'Trip'."),
+             ], required: ["tab_ids", "name"])),
         Spec(name: "show_side_by_side",
              description: "Show 2 to 4 tabs from the same space side by side in split view.",
              parameters: object(["tab_ids": ["type": "array", "items": ["type": "string"], "description": "2 to 4 tab IDs from list_tabs, in left-to-right order."]], required: ["tab_ids"])),
@@ -127,6 +134,7 @@ enum ChatTools {
                     if tab === current { flags.append("current") }
                     if tab.isPinned { flags.append("pinned") }
                     if sharedTabIDs.contains(tab.id) { flags.append("shared in chat") }
+                    if let group = store.group(containing: tab.id) { flags.append("group: \(group.name)") }
                     return "\(shortID(tab)) | \(tab.displayTitle) | \(tab.url?.absoluteString ?? "new tab page") | space: \(spaceName(spaceID, in: store))"
                         + (flags.isEmpty ? "" : " | " + flags.joined(separator: ", "))
                 }
@@ -179,6 +187,17 @@ enum ChatTools {
             lines += history.map { "history | \($0.title.isEmpty ? "(untitled)" : $0.title) | \($0.url.absoluteString) | last visited \($0.lastVisited.formatted(formatter)) | \($0.visitCount) visits" }
             let label = query.isEmpty ? "Looked at recent history" : "Searched history for “\(query)”"
             return ok(lines.isEmpty ? "Nothing in history or bookmarks matches." : lines.joined(separator: "\n"), ChatAction(kind: .searched, text: label))
+
+        case "group_tabs":
+            guard let ids = args["tab_ids"] as? [Any], let name = (args["name"] as? String)?.trimmingCharacters(in: .whitespaces) else {
+                return fail("Give tab IDs and a name.")
+            }
+            let targets = ids.compactMap { tab($0, in: store) }.filter { !$0.isPinned }
+            guard !targets.isEmpty else { return fail("None of those IDs match an unpinned open tab. Call list_tabs for current IDs.") }
+            guard Set(targets.map(\.spaceID)).count == 1 else { return fail("A group's tabs must be in the same space.") }
+            store.newGroup(with: targets, name: name.isEmpty ? nil : name)
+            return ok("Grouped \(targets.count) tab\(targets.count == 1 ? "" : "s") as “\(name)”.",
+                      ChatAction(kind: .grouped, text: "Grouped \(targets.count) tab\(targets.count == 1 ? "" : "s") as “\(name)”", tabID: targets[0].id))
 
         case "show_side_by_side":
             guard let ids = args["tab_ids"] as? [Any] else { return fail("Give 2 to 4 tab IDs.") }

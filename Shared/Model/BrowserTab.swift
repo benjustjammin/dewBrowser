@@ -211,10 +211,8 @@ extension BrowserTab: WKNavigationDelegate {
             return .cancel
         }
         #if os(macOS)
-        let flags = navigationAction.modifierFlags
-        if navigationAction.navigationType == .linkActivated,
-           flags.contains(.command) || navigationAction.buttonNumber == 2 {
-            store?.newTab(url: url, in: spaceID, after: self, select: flags.contains(.shift))
+        if opensInNewTab(navigationAction) {
+            openLinkInNewTab(url, navigationAction)
             return .cancel
         }
         #endif
@@ -273,9 +271,39 @@ extension BrowserTab: WKNavigationDelegate {
 extension BrowserTab: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        #if os(macOS)
+        // A middle- or ⌘-clicked link arrives here (as a new-window request), not through the navigation policy.
+        if opensInNewTab(navigationAction), let url = navigationAction.request.url {
+            openLinkInNewTab(url, navigationAction)
+            return nil
+        }
+        #endif
         // window.open / target=_blank: must use WebKit's configuration so window.opener works (OAuth popups).
-        store?.openPopup(configuration: configuration, from: self).webView
+        return store?.openPopup(configuration: configuration, from: self).webView
     }
+
+    #if os(macOS)
+    /// A link the user middle- or ⌘-clicked.
+    private func opensInNewTab(_ action: WKNavigationAction) -> Bool {
+        action.navigationType == .linkActivated && (action.modifierFlags.contains(.command) || isMiddleClick(action))
+    }
+
+    /// WebKit reports the button as a mask (middle = 1 << 2), older versions as a number (middle = 2).
+    private func isMiddleClick(_ action: WKNavigationAction) -> Bool {
+        action.buttonNumber == 4 || action.buttonNumber == 2
+    }
+
+    /// Middle-click follows Settings → General → Middle-click on a link (plain new tab, or into this tab's group);
+    /// ⌘-click always opens a plain new tab (⇧ to switch to it).
+    private func openLinkInNewTab(_ url: URL, _ action: WKNavigationAction) {
+        let flags = action.modifierFlags
+        if isMiddleClick(action), !flags.contains(.command), store?.middleClickAddsToGroup == true {
+            store?.openInGroup(url, from: self)
+        } else {
+            store?.newTab(url: url, in: spaceID, after: self, select: flags.contains(.shift))
+        }
+    }
+    #endif
 
     func webViewDidClose(_ webView: WKWebView) {
         store?.close(self)

@@ -7,6 +7,34 @@ import AppKit
 import UIKit
 #endif
 
+/// The app icon (Settings → Appearance): the classic blue drop, or one of the alternatives.
+enum AppIconChoice: String, CaseIterable, Identifiable {
+    case classic, ink, bead, haloDark, haloLight
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .haloDark: "Halo Dark"
+        case .haloLight: "Halo Light"
+        default: rawValue.capitalized
+        }
+    }
+    /// Asset name part: "Ink", "HaloDark"…
+    private var assetName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    /// The iOS alternate icon set (nil: the primary icon).
+    var iconName: String? { self == .classic ? nil : "AppIcon-\(assetName)" }
+    /// Picker image (on the Mac, also the Dock icon).
+    var previewName: String { "AppIconPreview-\(assetName)" }
+    /// The matching drop for the new tab page and welcome screen.
+    var markStyle: DewMark.Style {
+        switch self {
+        case .classic: .classic
+        case .ink: .ink
+        case .bead: .bead
+        case .haloDark, .haloLight: .halo
+        }
+    }
+}
+
 /// Light, dark, or following the system (Settings → Appearance).
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -61,6 +89,10 @@ final class BrowserStore {
     private(set) var history: [HistoryEntry] = []
     private(set) var bookmarks: [Bookmark] = []
     private(set) var splits: [TabSplit] = []
+    /// Tab groups (see TabGroups.swift; change them through its functions).
+    var groups: [TabGroup] = []
+    /// The group whose name/colour editor is open (a new group asks for a name).
+    var editingGroupID: UUID?
 
     var commandBar: CommandBarState?
     var spaceEditor: SpaceEditorState?
@@ -72,6 +104,23 @@ final class BrowserStore {
 
     /// iOS: the browser layout on screen, so Settings can offer the right options (e.g. Duo side buttons).
     var activeLayout: BrowserLayout = .toolbar
+
+    /// The first-run welcome is showing.
+    var showsWelcome = false
+
+    /// New users see the welcome once; anyone with saved data already (an update) doesn't.
+    /// Debug: `-DewShowWelcome YES` shows it anyway.
+    private func decideWelcome(firstRun: Bool) {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: "DewShowWelcome") { showsWelcome = true; return }
+        guard !Self.isDemo, !defaults.bool(forKey: "hasSeenWelcome") else { return }
+        if firstRun { showsWelcome = true } else { defaults.set(true, forKey: "hasSeenWelcome") }
+    }
+
+    func finishWelcome() {
+        showsWelcome = false
+        UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+    }
 
     /// iOS: the page Settings should open at (consumed when it opens), e.g. "spaces".
     var settingsPage: String?
@@ -128,6 +177,22 @@ final class BrowserStore {
 
     let defaultBrowser = DefaultBrowser()
 
+    /// Mac: middle-clicking a link adds its tab to the current tab's group (making one if needed) instead of
+    /// opening a plain new tab.
+    var middleClickAddsToGroup = UserDefaults.standard.bool(forKey: "middleClickAddsToGroup") {
+        didSet { UserDefaults.standard.set(middleClickAddsToGroup, forKey: "middleClickAddsToGroup") }
+    }
+
+    /// Mac: tabs stay hidden until the pointer reaches the window's left edge (sidebar) or top edge (strip).
+    var autoHideTabs = UserDefaults.standard.bool(forKey: "autoHideTabs") {
+        didSet { UserDefaults.standard.set(autoHideTabs, forKey: "autoHideTabs") }
+    }
+
+    /// Mac: tabs down the left instead of across the top (Settings → Appearance, ⌘S).
+    var tabsInSidebar = UserDefaults.standard.bool(forKey: "tabsInSidebar") {
+        didSet { UserDefaults.standard.set(tabsInSidebar, forKey: "tabsInSidebar") }
+    }
+
     var showBookmarksBar = UserDefaults.standard.object(forKey: "showBookmarksBar") as? Bool ?? true {
         didSet { UserDefaults.standard.set(showBookmarksBar, forKey: "showBookmarksBar") }
     }
@@ -178,6 +243,32 @@ final class BrowserStore {
     func reloadAppearance() {
         let saved = AppearanceMode(rawValue: Self.appearanceDefaults.string(forKey: "appearanceMode") ?? "") ?? .system
         if saved != appearanceMode { appearanceMode = saved } else { applyAppearance() }
+    }
+
+    /// The app icon. iOS changes the Home Screen icon; the Mac can only change the Dock icon while Dew runs.
+    var appIcon: AppIconChoice = {
+        #if os(iOS)
+        let current = UIApplication.shared.alternateIconName   // iOS remembers it; follow that
+        return AppIconChoice.allCases.first { $0.iconName == current } ?? .classic
+        #else
+        return AppIconChoice(rawValue: UserDefaults.standard.string(forKey: "appIcon") ?? "") ?? .classic
+        #endif
+    }() {
+        didSet {
+            guard appIcon != oldValue else { return }
+            UserDefaults.standard.set(appIcon.rawValue, forKey: "appIcon")
+            applyAppIcon()
+        }
+    }
+
+    /// Mac: shows the chosen icon in the Dock (call at launch too). iOS: switches the Home Screen icon.
+    func applyAppIcon() {
+        #if os(macOS)
+        NSApp.applicationIconImage = appIcon == .classic ? nil : NSImage(named: appIcon.previewName)
+        #else
+        guard UIApplication.shared.supportsAlternateIcons, UIApplication.shared.alternateIconName != appIcon.iconName else { return }
+        UIApplication.shared.setAlternateIconName(appIcon.iconName)
+        #endif
     }
 
     /// When Dew is dark, show light pages (ones without their own dark mode) dark too. Updates open tabs in place.
@@ -247,6 +338,7 @@ final class BrowserStore {
 
     init() {
         if Self.isDemo { loadDemo() } else { load() }
+        decideWelcome(firstRun: spaces.isEmpty)
         if spaces.isEmpty {
             spaces = Space.makeDefault()
             selectedSpaceID = spaces[0].id
@@ -440,6 +532,7 @@ final class BrowserStore {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
         let splitMates = split(containing: tab.id)?.tabIDs.filter { $0 != tab.id } ?? []
         removeFromSplit(tab)
+        detachFromGroup(tab)
         if selectedTabIDs[tab.spaceID] == tab.id, let mate = splitMates.first {
             selectedTabIDs[tab.spaceID] = mate
         } else if selectedTabIDs[tab.spaceID] == tab.id {
@@ -493,6 +586,7 @@ final class BrowserStore {
 
     func togglePin(_ tab: BrowserTab) {
         removeFromSplit(tab)
+        detachFromGroup(tab)
         tab.isPinned.toggle()
         setNeedsSave()
     }
@@ -525,7 +619,16 @@ final class BrowserStore {
         let to = tabs.firstIndex { $0 === target } ?? tabs.count
         tabs.insert(tab, at: to)
         tab.isPinned = target.isPinned
+        regroupAfterMove(tab, before: target)
         setNeedsSave()
+    }
+
+    /// Moves `tab` to just after `anchor` in the tab order (used to keep groups together).
+    func place(_ tab: BrowserTab, after anchor: BrowserTab) {
+        guard tab !== anchor, let from = tabs.firstIndex(where: { $0 === tab }) else { return }
+        tabs.remove(at: from)
+        let to = (tabs.firstIndex { $0 === anchor } ?? tabs.count - 1) + 1
+        tabs.insert(tab, at: min(to, tabs.count))
     }
 
     // MARK: Split view
@@ -813,6 +916,7 @@ final class BrowserStore {
         for tab in tabs where tab.spaceID == space.id { tab.tearDown() }
         let removedIDs = Set(tabs.filter { $0.spaceID == space.id }.map(\.id))
         splits.removeAll { !removedIDs.isDisjoint(with: $0.tabIDs) }
+        groups.removeAll { $0.spaceID == space.id }
         tabs.removeAll { $0.spaceID == space.id }
         history.removeAll { $0.spaceID == space.id }
         bookmarks.removeAll { $0.spaceID == space.id }
@@ -1173,6 +1277,7 @@ final class BrowserStore {
         var history: [HistoryEntry]
         var bookmarks: [Bookmark]?
         var splits: [TabSplit]?
+        var groups: [TabGroup]?
     }
 
     private static var stateURL: URL {
@@ -1193,12 +1298,20 @@ final class BrowserStore {
             return tab
         }
         let dew = open("https://en.wikipedia.org/wiki/Dew", "Dew - Wikipedia", in: personal)
-        _ = open("https://www.apple.com/", "Apple", in: personal)
+        let apple = open("https://www.apple.com/", "Apple", in: personal)
         _ = open("https://www.python.org/", "Welcome to Python.org", in: personal)
         let repo = open("https://github.com/benjustjammin/dewBrowser", "dewBrowser", in: work)
         _ = open("https://developer.apple.com/documentation/webkit", "WebKit | Apple Developer", in: work)
         selectedTabIDs[personal.id] = dew.id
         selectedTabIDs[work.id] = repo.id
+        // `-DewDemoGroups YES`: the first two tabs in a "Reading" group.
+        if UserDefaults.standard.bool(forKey: "DewDemoGroups") {
+            if let id = newGroup(with: [dew, apple], name: "Reading"),   // the real path, so it's exercised
+               UserDefaults.standard.bool(forKey: "DewDemoCollapsed") {
+                updateGroup(id) { $0.isCollapsed = true }
+                selectedTabIDs[personal.id] = tabs.first { $0.spaceID == personal.id && group(containing: $0.id) == nil }?.id
+            }
+        }
         // `-DewDemoTab 2` shows the space's third tab instead (Python.org: a coloured page, so the toolbar matches it).
         let pick = UserDefaults.standard.integer(forKey: "DewDemoTab")
         let personalTabs = tabs.filter { $0.spaceID == personal.id }
@@ -1241,6 +1354,11 @@ final class BrowserStore {
             if split.fractions.count != split.tabIDs.count { split.fractions = TabSplit.equal(split.tabIDs.count) }
             return split
         }
+        groups = (state.groups ?? []).compactMap { group in
+            var group = group
+            group.tabIDs = group.tabIDs.filter(tabIDs.contains)
+            return group.tabIDs.isEmpty ? nil : group
+        }
     }
 
     func setNeedsSave() {
@@ -1262,7 +1380,8 @@ final class BrowserStore {
         let state = SavedState(spaces: spaces, tabs: savedTabs.map(\.record),
                                selectedSpaceID: isPrivate ? (lastNormalSpaceID ?? spaces[0].id) : selectedSpaceID,
                                selectedTabIDs: selectedTabIDs.filter { !isPrivate($0.key) }, history: history,
-                               bookmarks: bookmarks, splits: splits.filter { split in savedTabs.contains { split.tabIDs.contains($0.id) } })
+                               bookmarks: bookmarks, splits: splits.filter { split in savedTabs.contains { split.tabIDs.contains($0.id) } },
+                               groups: groups.filter { !isPrivate($0.spaceID) })
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: Self.stateURL, options: .atomic)
     }

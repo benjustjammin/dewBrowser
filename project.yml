@@ -11,12 +11,16 @@ settings:
     # The version people see (CFBundleShortVersionString) and the build number (CFBundleVersion), for both
     # apps. Raise CURRENT_PROJECT_VERSION before every App Store Connect upload.
     MARKETING_VERSION: "1.0"
-    CURRENT_PROJECT_VERSION: "2.2"
+    CURRENT_PROJECT_VERSION: "2.3"
     DEAD_CODE_STRIPPING: YES
   configs:
     Release:
       SWIFT_OPTIMIZATION_LEVEL: "-Osize"
       SWIFT_COMPILATION_MODE: wholemodule
+      # Strip debugging symbols from every Release build (Archive already does), so a local install is as
+      # small as what people download. Crash symbols stay in the separate dSYM.
+      DEPLOYMENT_POSTPROCESSING: YES
+      STRIP_INSTALLED_PRODUCT: YES
 targets:
   Dew-macOS:
     type: application
@@ -122,6 +126,8 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         DEVELOPMENT_TEAM: UTJ8CD785K
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Alternate icons people can switch to (Settings → Appearance → App icon).
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Ink AppIcon-Bead AppIcon-HaloDark AppIcon-HaloLight"
         CODE_SIGN_STYLE: Automatic
   Dew-iOS-Widget:
     # Home screen and Lock Screen "Search" widget (opens dew://search).

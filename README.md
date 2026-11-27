@@ -44,6 +44,12 @@ then AI Chat. General is behaviour (default browser, search, tab suspension, imp
 looks and where things sit (website colour, bookmarks bar, address bar position, Duo side buttons). The space
 (profile) menu only has space things; its **Manage Spaces…** opens Settings at Spaces.
 
+## Welcome
+
+New users see one short welcome screen (`Shared/Views/WelcomeView.swift`): Spaces, side by side, Chat and privacy, with
+Get Started (and on the Mac, Import from Dia and Make Default). It's shown once and never to someone updating with
+saved data; Help → Welcome to Dew (Mac) or Settings → Welcome to Dew (iOS) shows it again. Debug: `-DewShowWelcome YES`.
+
 ## How spaces work
 
 Each `Space` has a UUID, and every tab in it uses `WKWebsiteDataStore(forIdentifier: space.id)`, a
@@ -183,6 +189,21 @@ Tabs that are suspended or haven't been opened are loaded in the background so t
   (nothing is sent), `-DewChatAttachTabs YES` shares six tabs. iOS: `-DewOpenSettings YES -DewSettingsPage ai`.
 - Nothing is sent until you ask, and conversations aren't saved (the pencil button starts a new chat).
 
+## Sidebar and tab groups (Mac)
+
+**Sidebar:** Settings → Appearance → Tabs → **Top** (default, Dia-style strip) or **Side**; ⌘S (View → Show Tabs in
+Sidebar) switches. The sidebar has the space's name and menu, pinned tabs as icon tiles, then tabs, splits and groups,
+New Tab, and the spaces along the bottom. Same right-click menu and drag-to-reorder as the strip. `macOS/Sidebar.swift`.
+
+**Tab groups (like Dia's):** right-click a tab → Add to New Group (named "Group 1", "Group 2"…), Add to Group or Remove
+from Group. A group is a soft tray holding its label and tabs, in the strip and the sidebar; the selected tab breaks
+out of it as usual. Click the label to collapse or expand (a collapsed group never hides the tab you're on);
+right-click it to rename, add a new tab, ungroup or close the group. Dragging a tab among a group's tabs adds it;
+dragging it out removes it. Groups keep their tabs together, are saved with the session (not synced), and Chat can
+make them (`group_tabs`). **Middle-click on a link** (Settings → General): opens a new tab, or adds the tab to the
+current tab's group (starting one with both tabs if needed); ⌘-click always opens a plain new tab.
+`Shared/Model/TabGroups.swift`, `Shared/Views/TabGroupViews.swift`. Debug: `-DewDemoGroups YES` (with `-DewDemo`).
+
 ## Mac shortcuts
 
 | | |
@@ -196,6 +217,7 @@ Tabs that are suspended or haven't been opened are loaded in the background so t
 | ⇧⌘N | New private tab |
 | ⌥⌘N | New space |
 | ⌘E | Show / hide Chat |
+| ⌘S | Tabs in the sidebar / at the top |
 | ⌘, | Settings: manage spaces (rename, colour, icon, reorder, delete), appearance |
 | ⌘D | Bookmark / un-bookmark the page |
 | ⌘⇧B | Show / hide bookmarks bar |
@@ -295,6 +317,13 @@ A blue drop and its reflection on a white tile. The source is `Tools/AppIcon.svg
 `Tools/render-icon.swift` renders it with WebKit into the Mac icon (rounded tile on the macOS icon grid, hairline
 edge and soft shadow so white reads in the Dock) and a full-bleed, opaque iOS icon (iOS rounds the corners). To regenerate after editing the SVG:
 
+**Alternate icons:** Settings → Appearance → App icon offers **Classic** (the blue drop) plus two flat, monochrome
+alternatives, **Ink** (`Tools/AppIcon-Ink.svg`) and **Bead** (`Tools/AppIcon-Bead.svg`), and the drop outlined in a
+rainbow sweep, **Halo Dark** and **Halo Light** (`Tools/AppIcon-HaloDark.svg` / `-HaloLight.svg`). The new tab page's
+drop follows the choice. iOS switches the Home Screen icon (alternate icon sets `AppIcon-Ink`, `AppIcon-Bead`,
+`AppIcon-HaloDark`, `AppIcon-HaloLight`); the Mac shows the choice in the Dock while Dew is
+open (Mac App Store apps can't change their Finder icon). Picker images are `AppIconPreview-*` in both asset catalogs.
+
 ```sh
 swiftc -O -o /tmp/render-icon Tools/render-icon.swift && /tmp/render-icon Tools/AppIcon.svg /tmp/dewicon
 cp /tmp/dewicon/icon-ios.png iOS/Assets.xcassets/AppIcon.appiconset/icon-1024.png
@@ -321,7 +350,7 @@ playing audio/video or using the camera/microphone are skipped.
 
 ## Ideas / not done yet
 
-- Vertical sidebar tab mode, and tab groups (Chat could then group tabs too)
+- Tab groups and the sidebar on iPhone and iPad (groups are kept there, but not shown yet)
 - Find in page on the Mac (iOS uses the system find bar)
 - Multiple browser windows on the Mac (there's one browser window, plus History and Settings)
 - A search engine per space (today one engine is used for every space)

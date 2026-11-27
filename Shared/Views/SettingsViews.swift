@@ -52,6 +52,15 @@ struct GeneralSettingsView: View {
             }
             #if os(macOS)
             Section {
+                Picker("Middle-click a link or bookmark", selection: $store.middleClickAddsToGroup) {
+                    Text("Opens a new tab").tag(false)
+                    Text("Adds a tab to its group").tag(true)
+                }
+            } footer: {
+                Text("Adds a tab to its group: the link or bookmark opens in a background tab in the current tab's group, or starts a group with both tabs. ⌘-click always opens a plain new tab.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            Section {
                 LabeledContent("Bookmarks and history") {
                     Button("Import from Dia…") { store.isImporting = true }
                 }
@@ -103,12 +112,39 @@ struct AppearanceSettingsView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 14)], spacing: 12) {
+                    ForEach(AppIconChoice.allCases) { choice in
+                        AppIconTile(choice: choice, isSelected: store.appIcon == choice) { store.appIcon = choice }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
+            } header: {
+                Text("App icon")
+            } footer: {
+                #if os(macOS)
+                Text("Shown in the Dock while Dew is open. When Dew isn't running, the Dock and Finder show the classic icon.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                #endif
+            }
+            Section {
                 Toggle("Match toolbar to website colour", isOn: $store.matchSiteColor)
             } footer: {
                 Text("The selected tab and address bar take on the colour at the top of the page.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             #if os(macOS)
+            Section {
+                Picker("Tabs", selection: $store.tabsInSidebar) {
+                    Text("Top").tag(false)
+                    Text("Side").tag(true)
+                }
+                .pickerStyle(.segmented)
+                Toggle("Auto-hide tabs", isOn: $store.autoHideTabs)
+            } footer: {
+                Text("Side shows tabs, splits and groups down the left of the window; ⌘S switches. Auto-hide gives the page the room: move the pointer to the window's left edge (side) or top edge (top) to show the tabs; ⌥⌘S switches.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section {
                 Toggle("Show bookmarks bar", isOn: $store.showBookmarksBar)
                 Toggle("Bookmark icons only", isOn: $store.bookmarksIconsOnly)
@@ -153,6 +189,30 @@ struct AppearanceSettingsView: View {
             #endif
         }
         .formStyle(.grouped)
+    }
+}
+
+/// One app icon choice: its picture, its name, and a ring when it's the current one.
+private struct AppIconTile: View {
+    let choice: AppIconChoice
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(choice.previewName)
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .padding(3)
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2.5))
+                Text(choice.title).font(.caption).foregroundStyle(isSelected ? .primary : .secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(choice.title) icon")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

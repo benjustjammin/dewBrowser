@@ -73,6 +73,9 @@ struct PhoneBrowserView: View {
         .sheet(isPresented: showingTabs ? .constant(false) : $store.isManagingSpaces) {
             SettingsSheet().environment(store)
         }
+        .sheet(isPresented: $store.showsWelcome, onDismiss: { store.finishWelcome() }) {
+            WelcomeView().environment(store)
+        }
         // Narrow screens (Duo folded, iPhone): Chat is a sheet, full height so the keyboard leaves room for the
         // conversation; drag it down to half. Wide screens show it as a panel beside the page instead.
         .sheet(isPresented: Binding(get: { store.isChatOpen && sizeClass == .compact && !showingTabs },
@@ -339,7 +342,7 @@ struct PhoneStartPage: View {
         let bookmarks = store.currentBookmarks
         ScrollView {
             VStack(spacing: 0) {
-                DewMark(size: 52)
+                BouncingDewMark(size: 52, style: store.appIcon.markStyle)
                     .padding(.top, 56)
                     .padding(.bottom, 22)
                 if store.isPrivate {
@@ -400,6 +403,13 @@ struct SettingsSheet: View {
                 }
                 Section {
                     row("ai", "AI Chat", "sparkles", .pink)
+                }
+                Section {
+                    Button("Welcome to Dew") {
+                        dismiss()
+                        // Once Settings has closed, so the welcome sheet can open.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { store.showsWelcome = true }
+                    }
                 }
             }
             .navigationTitle("Settings")

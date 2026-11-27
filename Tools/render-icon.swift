@@ -52,6 +52,8 @@ func fullBleed(_ svg: String) -> String {
     var out = svg.replacingOccurrences(of: #"<rect class="mac-only"[^>]*/>"#, with: "", options: .regularExpression)
     out = out.replacingOccurrences(of: #"<rect id="tile-rect" x="100" y="100" width="824" height="824" rx="185"/>"#,
                                    with: #"<rect id="tile-rect" x="100" y="100" width="824" height="824"/>"#)
+    out = out.replacingOccurrences(of: #"<clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>"#,
+                                   with: #"<clipPath id="tile"><rect x="100" y="100" width="824" height="824"/></clipPath>"#)
     let scale = 1024.0 / 824.0
     if let defsEnd = out.range(of: "</defs>"), let svgEnd = out.range(of: "</svg>", options: .backwards) {
         out.replaceSubrange(svgEnd, with: "</g></svg>")

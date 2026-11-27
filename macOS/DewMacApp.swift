@@ -16,7 +16,7 @@ struct DewMacApp: App {
                 .modifier(SettingsOpener(store: store))
                 .modifier(HandoffModifier(store: store))
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
-                    store.saveNow()
+                    store.saveNow(final: true)
                 }
         }
         .windowStyle(.hiddenTitleBar)

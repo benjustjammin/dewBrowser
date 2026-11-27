@@ -12,7 +12,7 @@ settings:
     # The version people see (CFBundleShortVersionString) and the build number (CFBundleVersion), for both
     # apps. Raise CURRENT_PROJECT_VERSION before every App Store Connect upload.
     MARKETING_VERSION: "1.1"
-    CURRENT_PROJECT_VERSION: "2.6"
+    CURRENT_PROJECT_VERSION: "2.7"
     DEAD_CODE_STRIPPING: YES
     # Xcode's recommended setting (Swift accessors for asset catalog colours and images).
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES

@@ -52,7 +52,7 @@ struct DewApp: App {
                         Task { await store.cloudSync.refresh() }
                         store.defaultBrowser.refresh()
                     } else {
-                        store.saveNow()
+                        store.saveNow(final: true)
                     }
                 }
         }

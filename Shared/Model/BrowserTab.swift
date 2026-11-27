@@ -15,7 +15,11 @@ final class BrowserTab: NSObject, Identifiable {
     var url: URL?
     var title: String
     var faviconURL: URL?
-    var isPinned: Bool
+    var isPinned: Bool {
+        didSet { if isPinned != oldValue { pinnedURL = isPinned ? url : nil } }
+    }
+    /// The page a pinned tab was pinned on: closing it goes back there (Dia's pinned tabs).
+    @ObservationIgnored var pinnedURL: URL?
     var isLoading = false
     var progress: Double = 0
     var canGoBack = false
@@ -49,6 +53,13 @@ final class BrowserTab: NSObject, Identifiable {
         super.init()
     }
 
+    /// A tab brought back from saved state or from Recently Closed.
+    convenience init(record: TabRecord, store: BrowserStore, isPinned: Bool? = nil) {
+        self.init(id: record.id, spaceID: record.spaceID, url: record.url, title: record.title, faviconURL: record.faviconURL,
+                  isPinned: isPinned ?? record.isPinned, themeColor: record.themeColor, store: store)
+        if self.isPinned { pinnedURL = record.pinnedURL ?? record.url }
+    }
+
     /// One of Dew's own pages (`dew://…`, like History), drawn natively rather than in a web view.
     var isInternalPage: Bool { url?.scheme == "dew" }
 
@@ -59,7 +70,8 @@ final class BrowserTab: NSObject, Identifiable {
     }
 
     var record: TabRecord {
-        TabRecord(id: id, spaceID: spaceID, url: url, title: title, faviconURL: faviconURL, isPinned: isPinned, themeColor: themeColor)
+        TabRecord(id: id, spaceID: spaceID, url: url, title: title, faviconURL: faviconURL, isPinned: isPinned, themeColor: themeColor,
+                  pinnedURL: pinnedURL)
     }
 
     // MARK: Web view
@@ -167,11 +179,35 @@ final class BrowserTab: NSObject, Identifiable {
         webView.pageZoom = zoom.map { min(max($0, 0.5), 3) } ?? 1
     }
 
+    /// The tab grid's picture of the page (iOS): only the top of it shows on a card, so only that is captured, kept
+    /// at 2× rather than the screen's 3× (every open tab holds one).
     func captureThumbnail() async {
         guard let webView = loadedWebView, webView.window != nil else { return }
         let configuration = WKSnapshotConfiguration()
+        configuration.rect = CGRect(x: 0, y: 0, width: webView.bounds.width, height: webView.bounds.width * 0.9)
         configuration.snapshotWidth = 300
-        thumbnail = try? await webView.takeSnapshot(configuration: configuration)
+        guard let image = try? await webView.takeSnapshot(configuration: configuration) else { return }
+        #if os(iOS)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 2
+        thumbnail = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in image.draw(at: .zero) }
+        #else
+        thumbnail = image
+        #endif
+    }
+
+    /// A pinned tab being closed: it stays pinned, but its page is unloaded (and the memory with it), and it's back at
+    /// the page it was pinned on when next opened.
+    func putAway() {
+        tearDown()
+        suspendedState = nil
+        isSuspended = false
+        thumbnail = nil
+        url = pinnedURL ?? url
+        isLoading = false
+        progress = 0
+        canGoBack = false
+        canGoForward = false
     }
 
     func tearDown() {
@@ -195,7 +231,6 @@ final class BrowserTab: NSObject, Identifiable {
         let playback = await webView.requestMediaPlaybackState()
         guard playback == .none || playback == .paused,
               loadedWebView === webView, webView.window == nil else { return false }
-        if thumbnail == nil { await captureThumbnail() }
         suspendedState = webView.interactionState
         tearDown()
         isSuspended = true
@@ -469,4 +504,6 @@ struct TabRecord: Codable {
     var faviconURL: URL?
     var isPinned: Bool
     var themeColor: RGBColor?
+    /// Optional so state saved before it existed still decodes.
+    var pinnedURL: URL?
 }

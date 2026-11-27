@@ -80,8 +80,18 @@ final class BrowserStore {
     private(set) var tabs: [BrowserTab] = []
     private(set) var selectedSpaceID = UUID()
     private var selectedTabIDs: [UUID: UUID] = [:]
-    private(set) var history: [HistoryEntry] = []
-    private(set) var bookmarks: [Bookmark] = []
+    /// Kept in its own file (it can be large), written only when it changes.
+    private(set) var history: [HistoryEntry] = [] {
+        didSet { historyChanged = true; completionSites = nil }
+    }
+    @ObservationIgnored private var historyChanged = false
+    @ObservationIgnored private var historyWrite: Task<Void, Never>?
+    private(set) var bookmarks: [Bookmark] = [] {
+        didSet {
+            cloudSync.bookmarksChanged = true   // iCloud only fetches and merges when there's something to merge
+            completionSites = nil
+        }
+    }
     private(set) var splits: [TabSplit] = []
     /// Tab groups (see TabGroups.swift; change them through its functions).
     var groups: [TabGroup] = []
@@ -91,6 +101,8 @@ final class BrowserStore {
     var commandBar: CommandBarState?
     var spaceEditor: SpaceEditorState?
     var isEditingAddress = false
+    /// Bumped by ⌘L, so the address field takes the keyboard even if it's already showing.
+    var addressFocusRequest = 0
     var isManagingSpaces = false
     var isImporting = false
     /// Asks the app to open Settings at a tab (Mac); iOS shows its settings sheet.
@@ -448,8 +460,11 @@ final class BrowserStore {
         let marks = currentBookmarks.filter { !openURLs.contains($0.url) && matches($0.title, $0.url) }.prefix(4)
         results += marks.map(Suggestion.bookmark)
         openURLs.formUnion(marks.map(\.url))
-        let past = history
-            .filter { $0.spaceID == selectedSpaceID && !openURLs.contains($0.url) && matches($0.title, $0.url) }
+        // History is newest first: the 200 most recent matches are plenty to rank (a short query matches nearly
+        // everything, and this runs on every keystroke).
+        let past = history.lazy
+            .filter { $0.spaceID == self.selectedSpaceID && !openURLs.contains($0.url) && matches($0.title, $0.url) }
+            .prefix(200)
             .sorted { ($0.visitCount, $0.lastVisited) > ($1.visitCount, $1.lastVisited) }
             .prefix(6)
         results += past.map(Suggestion.history)
@@ -560,21 +575,20 @@ final class BrowserStore {
         isEditingAddress = false
     }
 
+    /// Closes a tab. A pinned tab isn't removed, like Dia's: it's put away (unloaded, back at the page it was pinned
+    /// on) and stays pinned; unpin it to remove it.
     func close(_ tab: BrowserTab, remember: Bool = true) {
         guard let index = tabs.firstIndex(where: { $0 === tab }) else { return }
+        if tab.isPinned {
+            moveSelection(awayFrom: tab, splitMates: [])
+            tab.putAway()
+            setNeedsSave()
+            return
+        }
         let splitMates = split(containing: tab.id)?.tabIDs.filter { $0 != tab.id } ?? []
         removeFromSplit(tab)
         detachFromGroup(tab)
-        if selectedTabIDs[tab.spaceID] == tab.id, let mate = splitMates.first {
-            selectedTabIDs[tab.spaceID] = mate
-        } else if selectedTabIDs[tab.spaceID] == tab.id {
-            let ordered = orderedTabs(in: tab.spaceID)
-            let position = ordered.firstIndex { $0 === tab } ?? 0
-            let opener = tab.openerID.flatMap { id in ordered.first { $0.id == id } }
-            let neighbour = ordered.indices.contains(position + 1) ? ordered[position + 1]
-                : ordered.indices.contains(position - 1) ? ordered[position - 1] : nil
-            selectedTabIDs[tab.spaceID] = (opener ?? neighbour)?.id
-        }
+        moveSelection(awayFrom: tab, splitMates: splitMates)
         if remember && tab.url != nil && !isPrivate(tab.spaceID) {
             closedTabs.append(tab.record)
             if closedTabs.count > 50 { closedTabs.removeFirst() }
@@ -593,6 +607,19 @@ final class BrowserStore {
         setNeedsSave()
     }
 
+    /// What to show instead of `tab`: its split partner, the tab that opened it, or a neighbour. A pinned tab being
+    /// put away hands over to an unpinned tab, or the new tab page, rather than waking another pinned one.
+    private func moveSelection(awayFrom tab: BrowserTab, splitMates: [UUID]) {
+        guard selectedTabIDs[tab.spaceID] == tab.id else { return }
+        if let mate = splitMates.first { selectedTabIDs[tab.spaceID] = mate; return }
+        let ordered = orderedTabs(in: tab.spaceID).filter { $0 === tab || !tab.isPinned || !$0.isPinned }
+        let position = ordered.firstIndex { $0 === tab } ?? 0
+        let opener = tab.openerID.flatMap { id in ordered.first { $0.id == id && $0 !== tab } }
+        let neighbour = ordered.indices.contains(position + 1) ? ordered[position + 1]
+            : ordered.indices.contains(position - 1) ? ordered[position - 1] : nil
+        selectedTabIDs[tab.spaceID] = (opener ?? neighbour)?.id
+    }
+
     func closeSelectedTab() {
         if commandBar != nil { commandBar = nil } else if let tab = selectedTab { close(tab) }
     }
@@ -600,8 +627,7 @@ final class BrowserStore {
     func reopenClosedTab() {
         while let record = closedTabs.popLast() {
             guard spaces.contains(where: { $0.id == record.spaceID }) else { continue }
-            let tab = BrowserTab(id: record.id, spaceID: record.spaceID, url: record.url, title: record.title,
-                                 faviconURL: record.faviconURL, isPinned: record.isPinned, themeColor: record.themeColor, store: self)
+            let tab = BrowserTab(record: record, store: self)
             tabs.append(tab)
             select(tab)
             return
@@ -613,8 +639,7 @@ final class BrowserStore {
         for record in records {
             guard spaces.contains(where: { $0.id == record.spaceID }), !tabs.contains(where: { $0.id == record.id }) else { continue }
             closedTabs.removeAll { $0.id == record.id }
-            tabs.append(BrowserTab(id: record.id, spaceID: record.spaceID, url: record.url, title: record.title,
-                                   faviconURL: record.faviconURL, isPinned: record.isPinned, themeColor: record.themeColor, store: self))
+            tabs.append(BrowserTab(record: record, store: self))
         }
         setNeedsSave()
     }
@@ -884,7 +909,45 @@ final class BrowserStore {
     }
 
     func focusAddress() {
-        if selectedTab == nil { showCommandBar(newTab: true) } else { isEditingAddress = true }
+        if selectedTab == nil { showCommandBar(newTab: true); return }
+        isEditingAddress = true
+        addressFocusRequest += 1
+    }
+
+    // MARK: Address completion
+
+    /// This space's sites, most visited first (history, bookmarks and open tabs), built when first needed and
+    /// dropped when history, bookmarks or the space change.
+    @ObservationIgnored private var completionSites: (space: UUID, sites: [String])?
+
+    /// The site to complete what's typed to ("git" → "github.com"), or nil for searches, paths and full addresses.
+    func addressCompletion(for typed: String) -> String? {
+        let text = typed.lowercased()
+        guard !text.isEmpty, !text.contains(" "), !text.contains("/"), !text.contains(":") else { return nil }
+        let www = text.hasPrefix("www.")
+        let bare = www ? String(text.dropFirst(4)) : text
+        guard !bare.isEmpty, let site = sitesForCompletion().first(where: { $0.hasPrefix(bare) && $0.count > bare.count })
+        else { return nil }
+        return www ? "www." + site : site
+    }
+
+    /// Forgets the site list (call when editing starts, so newly opened tabs count).
+    func refreshCompletions() { completionSites = nil }
+
+    private func sitesForCompletion() -> [String] {
+        if let cached = completionSites, cached.space == selectedSpaceID { return cached.sites }
+        var score: [String: Int] = [:]
+        func add(_ url: URL?, _ weight: Int) {
+            guard let url, url.scheme?.hasPrefix("http") == true, var host = url.host()?.lowercased() else { return }
+            if host.hasPrefix("www.") { host.removeFirst(4) }
+            score[host, default: 0] += weight
+        }
+        for entry in history where entry.spaceID == selectedSpaceID { add(entry.url, entry.visitCount) }
+        for bookmark in bookmarks where bookmark.spaceID == selectedSpaceID { add(bookmark.url, 5) }
+        for tab in orderedTabs { add(tab.url, 3) }
+        let sites = score.sorted { $0.value > $1.value }.map(\.key)
+        completionSites = (selectedSpaceID, sites)
+        return sites
     }
 
     // MARK: Spaces
@@ -948,7 +1011,12 @@ final class BrowserStore {
     /// Deletes the space, its tabs and history, and wipes its cookies/logins from disk.
     func delete(_ space: Space) {
         guard spaces.count > 1 else { return }
-        for tab in tabs where tab.spaceID == space.id { tab.tearDown() }
+        for tab in tabs where tab.spaceID == space.id {
+            #if os(macOS)
+            extensions.didClose(tab)
+            #endif
+            tab.tearDown()
+        }
         let removedIDs = Set(tabs.filter { $0.spaceID == space.id }.map(\.id))
         splits.removeAll { !removedIDs.isDisjoint(with: $0.tabIDs) }
         groups.removeAll { $0.spaceID == space.id }
@@ -1066,8 +1134,7 @@ final class BrowserStore {
 
     func reopen(_ record: TabRecord) {
         closedTabs.removeAll { $0.id == record.id }
-        let tab = BrowserTab(id: record.id, spaceID: record.spaceID, url: record.url, title: record.title,
-                             faviconURL: record.faviconURL, isPinned: false, themeColor: record.themeColor, store: self)
+        let tab = BrowserTab(record: record, store: self, isPinned: false)
         tabs.append(tab)
         select(tab)
     }
@@ -1170,6 +1237,7 @@ final class BrowserStore {
     /// happens if the app was force-quit or (on iOS) closed by the system.
     func runAutoClear(_ trigger: AutoClearTrigger) async {
         let now = Date()
+        var cleared = false
         for space in spaces {
             let settings = space.privacySettings
             let due: Bool
@@ -1180,11 +1248,12 @@ final class BrowserStore {
                 due = now.timeIntervalSince(settings.lastCleared ?? now) >= settings.schedule.interval ?? .infinity
             }
             guard due, settings.clearHistory || settings.clearCookies else { continue }
+            cleared = true
             if settings.clearHistory { clearHistory(for: space.id) }
             if settings.clearCookies { await clearWebsiteData(for: space.id) }
             if let index = spaces.firstIndex(where: { $0.id == space.id }) { spaces[index].privacySettings.lastCleared = now }
         }
-        saveNow()
+        if cleared { saveNow() }
     }
 
     // MARK: Ad blocking
@@ -1317,7 +1386,8 @@ final class BrowserStore {
         var tabs: [TabRecord]
         var selectedSpaceID: UUID
         var selectedTabIDs: [UUID: UUID]
-        var history: [HistoryEntry]
+        /// Only in files from before history got its own (read once, to move it there).
+        var history: [HistoryEntry]?
         var bookmarks: [Bookmark]?
         var splits: [TabSplit]?
         var groups: [TabGroup]?
@@ -1328,6 +1398,8 @@ final class BrowserStore {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appending(path: "state.json")
     }
+
+    private static var historyFileURL: URL { stateURL.deletingLastPathComponent().appending(path: "history.json") }
 
     /// Example content for screenshots (see `isDemo`).
     private func loadDemo() {
@@ -1384,17 +1456,19 @@ final class BrowserStore {
         spaces = state.spaces
         selectedSpaceID = state.selectedSpaceID
         selectedTabIDs = state.selectedTabIDs
-        history = state.history
+        if let data = try? Data(contentsOf: Self.historyFileURL), let saved = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
+            history = saved
+            historyChanged = false
+        } else {
+            history = state.history ?? []   // an older state file: moved to history.json at the next save
+        }
         bookmarks = state.bookmarks ?? []
         // Repair icons saved by an older version that dropped the port (http://192.168.1.20/favicon.ico).
         for index in bookmarks.indices where bookmarks[index].faviconURL != nil
             && bookmarks[index].faviconURL == bookmarks[index].url.legacyFaviconGuess {
             bookmarks[index].faviconURL = bookmarks[index].url.faviconGuess
         }
-        tabs = state.tabs.map {
-            BrowserTab(id: $0.id, spaceID: $0.spaceID, url: $0.url, title: $0.title,
-                       faviconURL: $0.faviconURL, isPinned: $0.isPinned, themeColor: $0.themeColor, store: self)
-        }
+        tabs = state.tabs.map { BrowserTab(record: $0, store: self) }
         // Splits are checked against the restored tabs, so this must come after them.
         let tabIDs = Set(tabs.map(\.id))
         splits = (state.splits ?? []).compactMap { split in
@@ -1422,14 +1496,30 @@ final class BrowserStore {
         }
     }
 
-    func saveNow() {
+    /// Writes the state (spaces, tabs, bookmarks: small) and, when it changed, history in the background. `final`
+    /// (quitting, or going to the background on iOS) writes history straight away.
+    func saveNow(final: Bool = false) {
         guard !Self.isDemo else { return }
         saveTask?.cancel()
+        if historyChanged {
+            historyChanged = false
+            let entries = history, url = Self.historyFileURL
+            if final {
+                historyWrite?.cancel()
+                try? JSONEncoder().encode(entries).write(to: url, options: .atomic)
+            } else {
+                let previous = historyWrite
+                historyWrite = Task.detached(priority: .utility) {
+                    await previous?.value   // in order, so an older copy never lands last
+                    try? JSONEncoder().encode(entries).write(to: url, options: .atomic)
+                }
+            }
+        }
         // Private browsing is never written to disk.
         let savedTabs = tabs.filter { !isPrivate($0.spaceID) }
         let state = SavedState(spaces: spaces, tabs: savedTabs.map(\.record),
                                selectedSpaceID: isPrivate ? (lastNormalSpaceID ?? spaces[0].id) : selectedSpaceID,
-                               selectedTabIDs: selectedTabIDs.filter { !isPrivate($0.key) }, history: history,
+                               selectedTabIDs: selectedTabIDs.filter { !isPrivate($0.key) }, history: nil,
                                bookmarks: bookmarks, splits: splits.filter { split in savedTabs.contains { split.tabIDs.contains($0.id) } },
                                groups: groups.filter { !isPrivate($0.spaceID) })
         guard let data = try? JSONEncoder().encode(state) else { return }
@@ -1536,9 +1626,8 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
     }
 
     /// Finished downloads are remembered across launches (like Dia); ones whose file is gone are dropped.
-    private(set) var items: [Item] = [] {
-        didSet { save() }
-    }
+    /// Saved when a download finishes, fails or is cleared (not on every progress tick).
+    private(set) var items: [Item] = []
 
     override init() {
         super.init()
@@ -1570,7 +1659,10 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         itemIDs[ObjectIdentifier(download)] = item.id
         progressObservations[item.id] = download.progress.observe(\.fractionCompleted) { [weak self] progress, _ in
             let fraction = progress.fractionCompleted
-            Task { @MainActor in self?.update(item.id) { $0.progress = fraction } }
+            Task { @MainActor in
+                // Whole percents are plenty for the progress bar.
+                self?.update(item.id) { if fraction - $0.progress >= 0.01 { $0.progress = fraction } }
+            }
         }
         return destination
     }
@@ -1579,6 +1671,7 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
         guard let id = itemIDs.removeValue(forKey: ObjectIdentifier(download)) else { return }
         progressObservations[id] = nil
         update(id) { $0.finished = true; $0.progress = 1 }
+        save()
         #if os(macOS)
         if let item = items.first(where: { $0.id == id }) {
             // Makes the Downloads stack in the Dock bounce, like Safari.
@@ -1595,6 +1688,7 @@ final class DownloadManager: NSObject, WKDownloadDelegate {
 
     func clearFinished() {
         items.removeAll { $0.finished || $0.failed }
+        save()
     }
 
     private func update(_ id: UUID, _ change: (inout Item) -> Void) {

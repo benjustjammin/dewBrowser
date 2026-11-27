@@ -12,6 +12,7 @@ struct CommandBarView: View {
     @State private var selection: TextSelection?
     @State private var highlighted = 0
     @FocusState private var isFocused: Bool
+    @State private var completion = InlineCompletion()
 
     init(initialText: String = "", opensInNewTab: Bool, showsRecentWhenEmpty: Bool = true, onDismiss: @escaping () -> Void = {}) {
         self.opensInNewTab = opensInNewTab
@@ -87,9 +88,14 @@ struct CommandBarView: View {
                 .frame(height: min(CGFloat(items.count) * 42 + (engineItems.isEmpty ? 12 : 40), 420))
             }
         }
-        .onChange(of: text) { highlighted = 0 }
+        .onChange(of: text) {
+            highlighted = 0
+            completion.update(&text, &selection, store: store)
+        }
         .task(id: text) { await loadEngineSuggestions() }
         .onAppear {
+            completion.reset(to: text)
+            store.refreshCompletions()
             isFocused = true
             // The page you were on can still hold the keyboard as a new tab appears; take it again once it's gone.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isFocused = true }

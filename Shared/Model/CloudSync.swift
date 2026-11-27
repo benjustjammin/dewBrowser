@@ -122,14 +122,23 @@ final class CloudSync {
         }
     }
 
-    /// Call when tabs change; publishes a few seconds later (coalescing bursts of changes).
+    /// Set when bookmarks change, so the next push also fetches and merges them.
+    @ObservationIgnored var bookmarksChanged = false
+
+    /// Call when tabs change; publishes a few seconds later (coalescing bursts of changes). Only this device's tabs
+    /// go up (and only if they changed); the full fetch waits for the regular refresh unless bookmarks need merging.
     func setNeedsPush() {
         guard isEnabled else { return }
         pushTask?.cancel()
         pushTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            await self?.refresh()   // tabs, plus any bookmark changes
+            guard !Task.isCancelled, let self else { return }
+            if bookmarksChanged {
+                bookmarksChanged = false
+                await refresh()
+            } else {
+                await push()
+            }
         }
     }
 

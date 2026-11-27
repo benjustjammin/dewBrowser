@@ -3,7 +3,8 @@ import SwiftUI
 /// Tapping the address bar on iOS, like Safari: the address becomes a text field in place (just
 /// above the keyboard when the bar is at the bottom) with a round ✕ to cancel, and suggestions fill
 /// the screen: your tabs, bookmarks and history, then live suggestions from the search engine.
-/// In private browsing the field is grey with an eye, so it's obvious.
+/// In private browsing the field is grey with an eye, so it's obvious. The page's address starts selected, so typing
+/// replaces it (tap away to stay on the page), and site names complete as you type, as on the Mac.
 struct AddressEditor: View {
     @Environment(BrowserStore.self) private var store
     let state: CommandBarState
@@ -13,6 +14,7 @@ struct AddressEditor: View {
     @State private var selection: TextSelection?
     @State private var engineSuggestions: [String] = []
     @FocusState private var focused: Bool
+    @State private var completion = InlineCompletion()
 
     init(state: CommandBarState, atBottom: Bool) {
         self.state = state
@@ -54,7 +56,15 @@ struct AddressEditor: View {
             Rectangle().fill(.regularMaterial).ignoresSafeArea()
                 .onTapGesture { store.commandBar = nil }
         }
-        .onAppear { focused = true }
+        .onAppear {
+            completion.reset(to: text)
+            store.refreshCompletions()
+            focused = true
+            // Selected once the field has the keyboard (asked for before, iOS just puts the cursor at the end).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { selectAll() }
+        }
+        .onChange(of: focused) { if focused { selectAll() } }
+        .onChange(of: text) { completion.update(&text, &selection, store: store) }
         .task(id: text) { await loadEngineSuggestions() }
     }
 
@@ -118,6 +128,12 @@ struct AddressEditor: View {
             SuggestionLine(icon: nil, page: entry.url, title: entry.title.isEmpty ? entry.url.absoluteString : entry.title,
                            detail: URLInput.displayHost(entry.url)) { go(entry.url) }
         }
+    }
+
+    /// The whole address highlighted, so the first key replaces it.
+    private func selectAll() {
+        guard !text.isEmpty, text == state.text else { return }   // not once you've started typing
+        selection = TextSelection(range: text.startIndex..<text.endIndex)
     }
 
     private func submit() {

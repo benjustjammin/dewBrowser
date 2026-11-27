@@ -1,3 +1,4 @@
+import ImageIO
 import SwiftUI
 
 #if os(macOS)
@@ -29,17 +30,23 @@ extension Image {
 final class FaviconCache {
     static let shared = FaviconCache()
 
-    private var images: [URL: PlatformImage] = [:]
+    /// Small decoded icons, trimmed by the system under memory pressure and never more than a few hundred.
+    private let images: NSCache<NSURL, PlatformImage> = {
+        let cache = NSCache<NSURL, PlatformImage>()
+        cache.countLimit = 400
+        return cache
+    }()
+    /// Addresses the server said have no icon (not ones that failed for lack of a connection).
     private var failed: Set<URL> = []
     private var inFlight: [URL: Task<PlatformImage?, Never>] = [:]
     private let session = URLSession(configuration: .ephemeral, delegate: LocalTrust(), delegateQueue: nil)
 
-    func cached(_ url: URL) -> PlatformImage? { images[url] }
+    func cached(_ url: URL) -> PlatformImage? { images.object(forKey: url as NSURL) }
 
     /// `page` enables the fallbacks when `url` doesn't give an image.
     func image(for url: URL?, page: URL? = nil) async -> PlatformImage? {
         guard let key = url ?? page else { return nil }
-        if let image = images[key] { return image }
+        if let image = cached(key) { return image }
         if let task = inFlight[key] { return await task.value }
         let task = Task { () -> PlatformImage? in
             if let url, let image = await self.load(url) { return image }
@@ -52,21 +59,39 @@ final class FaviconCache {
         inFlight[key] = task
         let image = await task.value
         inFlight[key] = nil
-        if let image { images[key] = image }
+        if let image { images.setObject(image, forKey: key as NSURL) }
         return image
     }
 
     private func load(_ url: URL) async -> PlatformImage? {
-        if let image = images[url] { return image }
+        if let image = cached(url) { return image }
         if failed.contains(url) { return nil }
-        var image: PlatformImage?
-        if let (data, response) = try? await session.data(from: url) {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 200
-            let isHTML = response.mimeType?.contains("html") == true   // e.g. redirected to a login page
-            if status < 400, !isHTML { image = PlatformImage(data: data) }
-        }
-        if let image { images[url] = image } else { failed.insert(url) }
+        // No connection: try again next time rather than remembering it as missing.
+        guard let (data, response) = try? await session.data(from: url) else { return nil }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 200
+        let isHTML = response.mimeType?.contains("html") == true   // e.g. redirected to a login page
+        guard status < 400, !isHTML, let image = Self.icon(from: data) else { failed.insert(url); return nil }
+        images.setObject(image, forKey: url as NSURL)
         return image
+    }
+
+    /// Decoded at no more than 64 px (icons show at 16–32 pt), from the largest image in a multi-size .ico.
+    private static func icon(from data: Data) -> PlatformImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else {
+            return PlatformImage(data: data)   // formats Image I/O doesn't read (an SVG favicon on the Mac)
+        }
+        let width = { (index: Int) in
+            (CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any])?[kCGImagePropertyPixelWidth] as? Int ?? 0
+        }
+        let largest = (0..<CGImageSourceGetCount(source)).max { width($0) < width($1) } ?? 0
+        let options = [kCGImageSourceThumbnailMaxPixelSize: 64, kCGImageSourceCreateThumbnailFromImageAlways: true,
+                       kCGImageSourceCreateThumbnailWithTransform: true] as CFDictionary
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, largest, options) else { return nil }
+        #if os(macOS)
+        return NSImage(cgImage: image, size: .zero)
+        #else
+        return UIImage(cgImage: image)
+        #endif
     }
 
     /// Icons declared by <link rel="icon" | "shortcut icon" | "apple-touch-icon"> in the page's HTML.

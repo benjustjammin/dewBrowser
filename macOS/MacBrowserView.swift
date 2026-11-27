@@ -959,6 +959,7 @@ private struct AddressField: View {
     let tab: BrowserTab?
     @State private var draft = ""
     @State private var selection: TextSelection?
+    @State private var completion = InlineCompletion()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -967,11 +968,10 @@ private struct AddressField: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused($focused)
-                .onAppear {
-                    draft = tab?.url?.absoluteString ?? ""
-                    selection = TextSelection(range: draft.startIndex..<draft.endIndex)
-                    focused = true
-                }
+                .onAppear(perform: begin)
+                // ⌘L again (the field may be showing without the keyboard, if the page kept it).
+                .onChange(of: store.addressFocusRequest) { begin() }
+                .onChange(of: draft) { completion.update(&draft, &selection, store: store) }
                 .onSubmit {
                     if let resolved = URLInput.resolve(draft) { store.open(resolved.url, inNewTab: false) }
                     store.isEditingAddress = false
@@ -1001,6 +1001,16 @@ private struct AddressField: View {
             .contentShape(Rectangle())
             .onTapGesture { store.focusAddress() }
         }
+    }
+
+    /// The whole address, selected, with the keyboard: now, and again once the page has let go of it.
+    private func begin() {
+        draft = tab?.url?.absoluteString ?? ""
+        completion.reset(to: draft)
+        selection = TextSelection(range: draft.startIndex..<draft.endIndex)
+        store.refreshCompletions()
+        focused = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { focused = true }
     }
 }
 

@@ -106,7 +106,7 @@ struct DewSearchWidgetView: View {
                 }
                 Spacer(minLength: 0)
                 // The search capsule, like the address bar: it alone opens search (the rest just opens Dew).
-                Button(intent: OpenURLIntent(DewSearchWidget.searchURL)) {
+                Button(intent: OpenSearchIntent()) {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .medium))
                         Text(wide ? "Search or enter address" : "Search")

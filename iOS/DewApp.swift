@@ -17,6 +17,7 @@ struct DewApp: App {
                 .task {
                     store.applyAppearance()
                     store.applyAppIcon()   // tells the Search widget which drop to show
+                    store.handleWidgetSearchRequest()   // launched by the Search widget's capsule
                     // Debug: `-DewOpenAppURL dew://search` acts as if the Search widget was tapped.
                     if let link = UserDefaults.standard.string(forKey: "DewOpenAppURL"), let url = URL(string: link) {
                         store.handleAppURL(url)
@@ -38,8 +39,13 @@ struct DewApp: App {
                         }
                     }
                 }
+                // The capsule's intent can also run in Dew itself, already in front.
+                .onReceive(NotificationCenter.default.publisher(for: OpenSearchIntent.requested)) { _ in
+                    store.handleWidgetSearchRequest()
+                }
                 .onChange(of: scenePhase) {
                     if scenePhase == .active {
+                        store.handleWidgetSearchRequest()   // the Search widget's capsule brought Dew forward
                         store.reloadAppearance()
                         store.chat.refreshKeys()   // an API key may have arrived from the Mac through iCloud Keychain
                         Task { await store.runAutoClear(.periodic) }

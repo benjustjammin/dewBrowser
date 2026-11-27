@@ -214,6 +214,18 @@ final class BrowserStore {
         showCommandBar(newTab: true)
     }
 
+    #if os(iOS)
+    /// The Search widget's capsule was tapped (OpenSearchIntent): a new tab with the search box ready. Requests more
+    /// than half a minute old (Dew was opened some other way since) are dropped.
+    func handleWidgetSearchRequest() {
+        let defaults = Self.appearanceDefaults
+        let tapped = defaults.double(forKey: OpenSearchIntent.requestKey)
+        guard tapped > 0 else { return }
+        defaults.removeObject(forKey: OpenSearchIntent.requestKey)
+        if Date().timeIntervalSince1970 - tapped < 30 { handleAppURL(URL(string: "dew://search")!) }
+    }
+    #endif
+
     /// Light or dark, or follow the system. Applies to the whole app, including web pages that have a dark version.
     var appearanceMode = AppearanceMode(rawValue: BrowserStore.appearanceDefaults.string(forKey: "appearanceMode")
                                         ?? UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {

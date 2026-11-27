@@ -82,7 +82,11 @@ targets:
     platform: iOS
     # A shared scheme, so Archive/Run work for everyone who clones the repo (Xcode's own are per-user).
     scheme: {}
-    sources: [Shared, iOS]
+    sources:
+      - Shared
+      - iOS
+      # The Search widget's capsule intent runs in the app too.
+      - path: iOSWidget/OpenSearchIntent.swift
     info:
       path: iOS/Info.plist
       properties:

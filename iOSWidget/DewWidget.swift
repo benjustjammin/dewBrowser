@@ -2,8 +2,8 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// "Search" widget, small or wide: opens Dew in a new tab with the search box ready (`dew://search`). Which space it
-/// opens in is set in Dew (Settings → General → Search widget); its drop matches the app icon chosen in Dew. Its own
+/// "Search" widget, small or wide: its search capsule opens Dew in a new tab with the search box ready (`dew://search`),
+/// and the rest of it just opens Dew. Which space the search opens in is set in Dew (Settings → General → Search widget); its drop matches the app icon chosen in Dew. Its own
 /// look is a widget setting: touch and hold the widget, Edit Widget → Appearance (Automatic follows the Home Screen;
 /// Light or Dark keeps it that way).
 @main
@@ -40,7 +40,6 @@ struct DewSearchWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "DewSearch", intent: SearchWidgetConfiguration.self, provider: Provider()) { entry in
             DewSearchWidgetView(appearance: entry.appearance, style: entry.style)
-                .widgetURL(Self.searchURL)
         }
         .configurationDisplayName("Search")
         .description("Jump straight to searching in Dew.")
@@ -96,6 +95,7 @@ struct DewSearchWidgetView: View {
             }
             .widgetAccentable()
             .containerBackground(for: .widget) { Color.clear }
+            .widgetURL(DewSearchWidget.searchURL)
             .accessibilityLabel("Search in Dew")
         default:
             let dark = scheme == .dark, wide = family == .systemMedium
@@ -105,26 +105,29 @@ struct DewSearchWidgetView: View {
                     mark
                 }
                 Spacer(minLength: 0)
-                // The search capsule, like the address bar.
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
-                    Text(wide ? "Search or enter address" : "Search")
-                        .font(.system(size: 15, weight: .semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Spacer(minLength: 0)
+                // The search capsule, like the address bar: it alone opens search (the rest just opens Dew).
+                Button(intent: OpenURLIntent(DewSearchWidget.searchURL)) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .medium))
+                        Text(wide ? "Search or enter address" : "Search")
+                            .font(.system(size: 15))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(dark ? Color(white: 0.62) : Color(white: 0.45))
+                    .padding(.horizontal, 12)
+                    .frame(height: 38)
+                    .background(Capsule().fill(dark ? Color(white: 0.24) : Color.white))
+                    .shadow(color: .black.opacity(dark ? 0.3 : 0.1), radius: 6, y: 2)
+                    .contentShape(Capsule())
                 }
-                .foregroundStyle(dark ? Color.white : Color.black)
-                .padding(.horizontal, 12)
-                .frame(height: 38)
-                .background(Capsule().fill(dark ? Color(white: 0.24) : Color.white))
-                .shadow(color: .black.opacity(dark ? 0.3 : 0.1), radius: 6, y: 2)
+                .buttonStyle(.plain)
                 .widgetAccentable()
+                .accessibilityLabel("Search in Dew")
             }
             .environment(\.colorScheme, scheme)
             .containerBackground(for: .widget) { dark ? Color(white: 0.12) : Color(white: 0.95) }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Search in Dew")
         }
     }
 

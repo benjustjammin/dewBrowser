@@ -89,7 +89,11 @@ struct CommandBarView: View {
         }
         .onChange(of: text) { highlighted = 0 }
         .task(id: text) { await loadEngineSuggestions() }
-        .onAppear { isFocused = true }
+        .onAppear {
+            isFocused = true
+            // The page you were on can still hold the keyboard as a new tab appears; take it again once it's gone.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { isFocused = true }
+        }
     }
 
     private func loadEngineSuggestions() async {
